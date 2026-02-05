@@ -13,7 +13,11 @@ DEBUG = False
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key-change-in-production')
 
 # Update with your production domain
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',') + ['.vercel.app']
+# Railway provides RAILWAY_PUBLIC_DOMAIN automatically
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_HOSTS') else [
+    os.getenv('RAILWAY_PUBLIC_DOMAIN', 'localhost'),
+    '.railway.app',
+]
 
 # Database - Railway PostgreSQL
 # Get DATABASE_URL from Railway environment variables
