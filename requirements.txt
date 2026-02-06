@@ -7,6 +7,9 @@ python-dateutil==2.9.0.post0
 whitenoise==6.8.2
 gunicorn==23.0.0
 
+# Cryptography (for Stacks wallet verification)
+pycryptodome==3.20.0
+
 # Database drivers
 psycopg2-binary==2.9.9  # For PostgreSQL (Railway)
 
