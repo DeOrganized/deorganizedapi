@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
-from datetime import timedelta
+from dotenv import load_dotenv
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Load environment variables from .env file
+load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -73,17 +74,17 @@ WSGI_APPLICATION = 'deorganized.wsgi.application'
 
 
 # Database
-# For PythonAnywhere: Use MySQL database
+# Production: Railway PostgreSQL (recommended)
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('DB_NAME', 'deorganized_db'),
-        'USER': os.environ.get('DB_USER', 'root'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '3306'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
         'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'sslmode': 'require',  # Railway requires SSL
         },
     }
 }

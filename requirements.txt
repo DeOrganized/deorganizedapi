@@ -8,7 +8,7 @@ whitenoise==6.8.2
 gunicorn==23.0.0
 
 # Database drivers
-mysqlclient==2.2.0  # For PythonAnywhere MySQL
+psycopg2-binary==2.9.9  # For PostgreSQL (Railway)
 
 # Optional but recommended
 python-dotenv==1.0.0  # For loading environment variables from .env file
