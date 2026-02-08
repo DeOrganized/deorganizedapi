@@ -139,6 +139,11 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Security settings for production
 if not DEBUG:
+    # Railway-specific: Trust proxy headers for HTTPS detection
+    # This MUST come before SECURE_SSL_REDIRECT to prevent infinite redirect loop
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Now it's safe to redirect to HTTPS
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

@@ -1,0 +1,15 @@
+# Nixpacks Configuration for Railway
+# Let Nixpacks auto-detect Python and handle dependency installation
+
+# Install system packages needed for coincurve (Stacks signature verification)
+[phases.setup]
+aptPkgs = ["automake", "autoconf", "libtool", "pkg-config"]
+
+[phases.build]
+# Only collect static files during build phase (database not available yet)
+cmds = ["python manage.py collectstatic --no-input"]
+
+[start]
+# Run migrations FIRST (database is now available), then start Gunicorn
+# Migrations run on every deploy to keep database schema up-to-date
+cmd = "python manage.py migrate --no-input && gunicorn deorganized.wsgi:application --bind 0.0.0.0:$PORT"
