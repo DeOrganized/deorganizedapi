@@ -36,8 +36,6 @@ class ShowSerializer(serializers.ModelSerializer):
     """Full show serializer with creator info and engagement counts"""
     creator = ShowCreatorSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
-    like_count = serializers.SerializerMethodField()
-    comment_count = serializers.SerializerMethodField()
     schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
     episodes = ShowEpisodeSerializer(many=True, read_only=True)
     
@@ -50,31 +48,7 @@ class ShowSerializer(serializers.ModelSerializer):
             'status', 'created_at', 'updated_at',
             'like_count', 'comment_count', 'share_count', 'episodes'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'creator', 'slug', 'share_count']
-    
-    def get_like_count(self, obj):
-        """Get like count using ContentType"""
-        from django.contrib.contenttypes.models import ContentType
-        from users.models import Like
-        
-        if hasattr(obj, '_like_count'):
-            return obj._like_count
-        
-        # Manual count using ContentType
-        show_ct = ContentType.objects.get_for_model(obj)
-        return Like.objects.filter(content_type=show_ct, object_id=obj.id).count()
-    
-    def get_comment_count(self, obj):
-        """Get comment count using ContentType"""
-        from django.contrib.contenttypes.models import ContentType
-        from users.models import Comment
-        
-        if hasattr(obj, '_comment_count'):
-            return obj._comment_count
-        
-        # Manual count using ContentType  
-        show_ct = ContentType.objects.get_for_model(obj)
-        return Comment.objects.filter(content_type=show_ct, object_id=obj.id).count()
+        read_only_fields = ['created_at', 'updated_at', 'creator', 'slug', 'share_count', 'like_count', 'comment_count']
     
     def validate(self, data):
         """Validate recurring show fields"""
@@ -104,31 +78,7 @@ class ShowListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views"""
     creator = ShowCreatorSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
-    like_count = serializers.SerializerMethodField()
-    comment_count = serializers.SerializerMethodField()
     schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
-    
-    def get_like_count(self, obj):
-        """Get like count using ContentType"""
-        from django.contrib.contenttypes.models import ContentType
-        from users.models import Like
-        
-        if hasattr(obj, '_like_count'):
-            return obj._like_count
-        
-        show_ct = ContentType.objects.get_for_model(obj)
-        return Like.objects.filter(content_type=show_ct, object_id=obj.id).count()
-    
-    def get_comment_count(self, obj):
-        """Get comment count using ContentType"""
-        from django.contrib.contenttypes.models import ContentType
-        from users.models import Comment
-        
-        if hasattr(obj, '_comment_count'):
-            return obj._comment_count
-        
-        show_ct = ContentType.objects.get_for_model(obj)
-        return Comment.objects.filter(content_type=show_ct, object_id=obj.id).count()
     
     class Meta:
         model = Show
