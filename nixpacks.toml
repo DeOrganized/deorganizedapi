@@ -7,13 +7,11 @@ aptPkgs = ["automake", "autoconf", "libtool", "pkg-config"]
 
 [phases.build]
 # Only collect static files during build phase (database not available yet)
-# Also create preset tags (idempotent, safe to run multiple times)
 cmds = [
-    "python manage.py collectstatic --no-input",
-    "python manage.py create_preset_tags || true"
+    "python manage.py collectstatic --no-input"
 ]
 
 [start]
-# Run migrations FIRST (database is now available), then start Gunicorn
-# Migrations run on every deploy to keep database schema up-to-date
-cmd = "python manage.py migrate --no-input && gunicorn deorganized.wsgi:application --bind 0.0.0.0:$PORT"
+# Run migrations FIRST, then create preset tags, then start Gunicorn
+# Migrations and tags run on every deploy to keep database up-to-date
+cmd = "python manage.py migrate --no-input && python manage.py create_preset_tags && gunicorn deorganized.wsgi:application --bind 0.0.0.0:$PORT"
