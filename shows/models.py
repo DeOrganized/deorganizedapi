@@ -116,6 +116,10 @@ class Show(models.Model):
         help_text="List of ISO date strings for cancelled recurring show instances"
     )
     
+    # Generic relations for engagement (likes/comments)
+    likes = GenericRelation('users.Like', content_type_field='content_type', object_id_field='object_id', related_query_name='show')
+    comments = GenericRelation('users.Comment', content_type_field='content_type', object_id_field='object_id', related_query_name='show')
+    
     # Analytics
     share_count = models.IntegerField(default=0, help_text="Number of times this show has been shared")
     
