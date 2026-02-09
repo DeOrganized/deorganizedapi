@@ -36,8 +36,12 @@ urlpatterns = [
     path('api/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
 ]
 
-# Serve media files in development
+# Serve media files (development and production)
+# NOTE: In production, Django serves media via Gunicorn
+# For high-traffic sites, consider using a CDN or nginx
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Serve static files in development only (production uses collectstatic)
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
