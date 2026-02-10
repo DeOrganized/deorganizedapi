@@ -459,26 +459,8 @@ class LikeViewSet(viewsets.ModelViewSet):
             like.delete()
             return Response({'status': 'unliked'}, status=status.HTTP_200_OK)
         
-        # Create notification for content owner
-        content_object = like.content_object
-        recipient = None
-        
-        if hasattr(content_object, 'creator'):
-            recipient = content_object.creator
-        elif hasattr(content_object, 'organizer'):
-            recipient = content_object.organizer
-        elif hasattr(content_object, 'author'):
-            recipient = content_object.author
-            
-        # Only notify if recipient exists and is not the liker
-        if recipient and recipient != request.user:
-            Notification.objects.create(
-                recipient=recipient,
-                actor=request.user,
-                notification_type='like',
-                content_type_id=content_type_id,
-                object_id=object_id
-            )
+        # Notification is automatically created by signal handler
+        # (see users/signals.py - create_like_notification)
         
         return Response(
             {'status': 'liked', 'like': LikeSerializer(like).data},
@@ -527,28 +509,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
+        # Save comment - notification is automatically created by signal handler
+        # (see users/signals.py - create_comment_notification)
         comment = serializer.save(user=self.request.user)
-        
-        # Create notification for content owner
-        content_object = comment.content_object
-        recipient = None
-        
-        if hasattr(content_object, 'creator'):
-            recipient = content_object.creator
-        elif hasattr(content_object, 'organizer'):
-            recipient = content_object.organizer
-        elif hasattr(content_object, 'author'):
-            recipient = content_object.author
-            
-        # Only notify if recipient exists and is not the commenter
-        if recipient and recipient != self.request.user:
-            Notification.objects.create(
-                recipient=recipient,
-                actor=self.request.user,
-                notification_type='comment',
-                content_type=comment.content_type,
-                object_id=comment.object_id
-            )
 
 
 class FollowViewSet(viewsets.ModelViewSet):
