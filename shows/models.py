@@ -75,6 +75,15 @@ class Show(models.Model):
     # Tags for categorization
     tags = models.ManyToManyField(Tag, related_name='shows', blank=True)
     
+    # Guest creators appearing on this show
+    guests = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='guest_on_shows',
+        blank=True,
+        limit_choices_to={'role': 'creator'},
+        help_text="Creators appearing as guests on this show"
+    )
+    
     # External links (Watch Now functionality)
     external_link = models.URLField(
         blank=True,
@@ -150,81 +159,54 @@ class Show(models.Model):
         
         time_str = self.scheduled_time.strftime('%I:%M %p')
         
-        if self.recurrence_type == 'DAILY':
-            return f"Daily at {time_str}"
-        elif self.recurrence_type == 'WEEKDAYS':
-            return f"Weekdays at {time_str}"
-        elif self.recurrence_type == 'WEEKENDS':
-            return f"Weekends at {time_str}"
-        elif self.recurrence_type == 'SPECIFIC_DAY' and self.day_of_week is not None:
+        if self.recurrence_type == 'SPECIFIC_DAY':
             day_name = dict(self.DAY_OF_WEEK_CHOICES)[self.day_of_week]
             return f"Every {day_name} at {time_str}"
-        
-        return "No recurring schedule"
-    
-    def should_air_on_date(self, date):
-        """Check if show should air on given date based on recurrence pattern"""
-        if not self.is_recurring:
-            return False
-        
-        # Check if this specific date was cancelled
-        date_str = date.isoformat()
-        if date_str in self.cancelled_instances:
-            return False
-        
-        if self.recurrence_type == 'DAILY':
-            return True
+        elif self.recurrence_type == 'DAILY':
+            return f"Daily at {time_str}"
         elif self.recurrence_type == 'WEEKDAYS':
-            return date.weekday() < 5  # Mon-Fri (0-4)
+            return f"Weekdays (Mon-Fri) at {time_str}"
         elif self.recurrence_type == 'WEEKENDS':
-            return date.weekday() >= 5  # Sat-Sun (5-6)
-        elif self.recurrence_type == 'SPECIFIC_DAY':
-            return date.weekday() == self.day_of_week
-        
-        return False
+            return f"Weekends (Sat-Sun) at {time_str}"
+        else:
+            return "Custom schedule"
     
     def save(self, *args, **kwargs):
-        """Auto-generate slug from title if not provided"""
+        """Auto-generate slug from title if not set"""
         if not self.slug:
             base_slug = slugify(self.title)
             slug = base_slug
             counter = 1
             
-            # Ensure slug is unique
-            while Show.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            # Ensure unique slug
+            while Show.objects.filter(slug=slug).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             
             self.slug = slug
         
         super().save(*args, **kwargs)
-    
-    def get_absolute_url(self):
-        """Return URL for show detail page using slug"""
-        return f"/shows/{self.slug}/"
-
 
 
 class ShowEpisode(models.Model):
     """
-    Optional: Individual episodes for shows
+    Model representing individual episodes of a show.
+    Used for archived episodes or to track past broadcasts.
     """
     show = models.ForeignKey(Show, on_delete=models.CASCADE, related_name='episodes')
-    episode_number = models.PositiveIntegerField()
+    episode_number = models.IntegerField(help_text="Episode number for this show")
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    air_date = models.DateTimeField()
-    duration = models.DurationField(blank=True, null=True, help_text="Episode duration")
-    video_url = models.URLField(blank=True, help_text="Link to episode video")
-    
+    air_date = models.DateField(help_text="Date this episode aired")
+    duration = models.DurationField(blank=True, null=True, help_text="Duration of the episode")
+    video_url = models.URLField(blank=True, help_text="URL to recorded episode (YouTube, etc.)")
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['show', 'episode_number']
+        ordering = ['-air_date','-episode_number']
         unique_together = ['show', 'episode_number']
         indexes = [
-            models.Index(fields=['show', 'air_date']),
+            models.Index(fields=['show', '-air_date']),
         ]
     
     def __str__(self):
@@ -265,3 +247,52 @@ class ShowReminder(models.Model):
     def __str__(self):
         return f"{self.show.title} - {self.scheduled_for.strftime('%Y-%m-%d %H:%M')} - {self.creator_response}"
 
+
+class GuestRequest(models.Model):
+    """
+    Model for managing guest appearance requests on shows.
+    Creators can request to appear as guests on other creators' shows.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+    ]
+    
+    show = models.ForeignKey(
+        Show,
+        on_delete=models.CASCADE,
+        related_name='guest_requests',
+        help_text="Show that the guest request is for"
+    )
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sent_guest_requests',
+        limit_choices_to={'role': 'creator'},
+        help_text="Creator requesting to be a guest"
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+    message = models.TextField(
+        blank=True,
+        max_length=500,
+        help_text="Optional message from the requester"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['show', 'requester']  # Prevent duplicate requests
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['show', 'status']),
+            models.Index(fields=['requester', 'status']),
+            models.Index(fields=['-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.requester.username} → {self.show.title} ({self.status})"

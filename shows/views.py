@@ -5,11 +5,12 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta, datetime
-from .models import Show, ShowEpisode, Tag, ShowReminder
+from .models import Show, ShowEpisode, Tag, ShowReminder, GuestRequest
 from users.models import Notification
 from .serializers import (
-    ShowSerializer, ShowListSerializer, ShowCreateUpdateSerializer,
-    ShowEpisodeSerializer, TagSerializer, ShowReminderSerializer
+    ShowSerializer, ShowListSerializer, ShowCreateSerializer,
+    ShowEpisodeSerializer, TagSerializer, ShowReminderSerializer,
+    GuestRequestSerializer, GuestRequestCreateSerializer, GuestRequestListSerializer
 )
 from api.permissions import IsCreatorOrReadOnly
 
@@ -64,7 +65,7 @@ class ShowViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return ShowListSerializer
         elif self.action in ['create', 'update', 'partial_update']:
-            return ShowCreateUpdateSerializer
+            return ShowCreateSerializer
         return ShowSerializer
     
     def get_queryset(self):
@@ -283,3 +284,180 @@ class ShowEpisodeViewSet(viewsets.ModelViewSet):
             raise PermissionError("You can only create episodes for your own shows.")
         serializer.save()
 
+
+class GuestRequestViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for GuestRequest model.
+    
+    List: GET /api/shows/guest-requests/
+    Create: POST /api/shows/guest-requests/create_request/
+    Retrieve: GET /api/shows/guest-requests/{id}/
+    Accept: POST /api/shows/guest-requests/{id}/accept/
+    Decline: POST /api/shows/guest-requests/{id}/decline/
+    
+    Filters:
+    - ?received=true - Get requests received for my shows
+    - Default: Get requests I've sent
+    """
+    queryset = GuestRequest.objects.all()  # Base queryset for detail actions
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.OrderingFilter]
+    ordering = ['-created_at']
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer"""
+        if self.action == 'create_request':
+            return GuestRequestCreateSerializer
+        elif self.action == 'list':
+            return GuestRequestListSerializer
+        return GuestRequestSerializer
+    
+    def get_queryset(self):
+        """Filter requests based on user role - only for list actions"""
+        # Don't filter for detail actions (retrieve, accept, decline)
+        if self.action in ['retrieve', 'accept', 'decline']:
+            return GuestRequest.objects.select_related('requester', 'show', 'show__creator')
+        
+        user = self.request.user
+        
+        # Show requests I've received (for shows I own)
+        if self.request.query_params.get('received') == 'true':
+            return GuestRequest.objects.filter(
+                show__creator=user,
+                status='pending'
+            ).select_related('requester', 'show').order_by('-created_at')
+        
+        # Show requests I've sent
+        return GuestRequest.objects.filter(
+            requester=user
+        ).select_related('show', 'show__creator').order_by('-created_at')
+
+    
+    @action(detail=False, methods=['post'])
+    def create_request(self, request):
+        """Create a guest request"""
+        serializer = GuestRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        show_id = serializer.validated_data['show_id']
+        message = serializer.validated_data.get('message', '')
+        
+        # Validate user is a creator
+        if request.user.role != 'creator':
+            return Response(
+                {'error': 'Only creators can request guest appearances'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            show = Show.objects.get(id=show_id)
+        except Show.DoesNotExist:
+            return Response(
+                {'error': 'Show not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Can't request guest spot on own show
+        if show.creator == request.user:
+            return Response(
+                {'error': 'Cannot request guest spot on your own show'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if request already exists
+        if GuestRequest.objects.filter(show=show, requester=request.user).exists():
+            return Response(
+                {'error': 'You already have a request for this show'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create guest request
+        guest_request = GuestRequest.objects.create(
+            show=show,
+            requester=request.user,
+            message=message
+        )
+        
+        # Create notification for show owner
+        Notification.objects.create(
+            recipient=show.creator,
+            message=f"{request.user.username} wants to be on your show",
+            actor=request.user,
+            notification_type='guest_request',
+            content_type_id=guest_request.pk,
+            object_id=show.id
+        )
+        
+        return Response(
+            GuestRequestSerializer(guest_request).data,
+            status=status.HTTP_201_CREATED
+        )
+    
+    @action(detail=True, methods=['post'])
+    def accept(self, request, pk=None):
+        """Accept a guest request"""
+        try:
+            guest_request = self.get_object()
+        except GuestRequest.DoesNotExist:
+            return Response(
+                {'error': 'Guest request not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Only show creator can accept
+        if guest_request.show.creator != request.user:
+            return Response(
+                {'error': 'Only the show creator can accept requests'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Update status
+        guest_request.status = 'accepted'
+        guest_request.save()
+        
+        # Add requester as guest
+        guest_request.show.guests.add(guest_request.requester)
+        
+        # Create notification for requester
+        Notification.objects.create(
+            recipient=guest_request.requester,
+            actor=request.user,
+            notification_type='guest_accepted',
+            content_type_id=guest_request.pk,
+            object_id=guest_request.show.id
+        )
+        
+        return Response(GuestRequestSerializer(guest_request).data)
+    
+    @action(detail=True, methods=['post'])
+    def decline(self, request, pk=None):
+        """Decline a guest request"""
+        try:
+            guest_request = self.get_object()
+        except GuestRequest.DoesNotExist:
+            return Response(
+                {'error': 'Guest request not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Only show creator can decline
+        if guest_request.show.creator != request.user:
+            return Response(
+                {'error': 'Only the show creator can decline requests'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Update status
+        guest_request.status = 'declined'
+        guest_request.save()
+        
+        # Create notification for requester
+        Notification.objects.create(
+            recipient=guest_request.requester,
+            actor=request.user,
+            notification_type='guest_declined',
+            content_type_id=guest_request.pk,
+            object_id=guest_request.show.id
+        )
+        
+        return Response(GuestRequestSerializer(guest_request).data)
