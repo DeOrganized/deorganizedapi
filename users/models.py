@@ -215,6 +215,9 @@ class Notification(models.Model):
         ('comment', 'Comment'),
         ('show_reminder', 'Show Reminder'),
         ('show_cancelled', 'Show Cancelled'),
+        ('guest_request', 'Guest Request'),
+        ('guest_accepted', 'Guest Accepted'),
+        ('guest_declined', 'Guest Declined'),
     ]
     
     recipient = models.ForeignKey(

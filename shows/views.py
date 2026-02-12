@@ -378,10 +378,10 @@ class GuestRequestViewSet(viewsets.ModelViewSet):
             message=message
         )
         
+        
         # Create notification for show owner
         Notification.objects.create(
             recipient=show.creator,
-            message=f"{request.user.username} wants to be on your show",
             actor=request.user,
             notification_type='guest_request',
             content_type_id=guest_request.pk,
