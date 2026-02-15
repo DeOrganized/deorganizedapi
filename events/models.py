@@ -23,8 +23,8 @@ class Event(models.Model):
     )
     
     # Scheduling
-    start_datetime = models.DateTimeField()
-    end_datetime = models.DateTimeField()
+    start_datetime = models.DateTimeField(blank=True, null=True, help_text="Required for one-off events, optional for recurring")
+    end_datetime = models.DateTimeField(blank=True, null=True, help_text="Required for one-off events, optional for recurring")
     
     # Location
     venue_name = models.CharField(max_length=255, blank=True)
@@ -44,6 +44,55 @@ class Event(models.Model):
     # Privacy
     is_public = models.BooleanField(default=True)
     
+    # Recurrence choices (same as Show)
+    DAY_OF_WEEK_CHOICES = [
+        (0, 'Monday'),
+        (1, 'Tuesday'),
+        (2, 'Wednesday'),
+        (3, 'Thursday'),
+        (4, 'Friday'),
+        (5, 'Saturday'),
+        (6, 'Sunday'),
+    ]
+    
+    RECURRENCE_CHOICES = [
+        ('SPECIFIC_DAY', 'Specific Day'),
+        ('DAILY', 'Daily'),
+        ('WEEKDAYS', 'Weekdays (Mon-Fri)'),
+        ('WEEKENDS', 'Weekends (Sat-Sun)'),
+    ]
+    
+    # Recurring schedule fields
+    is_recurring = models.BooleanField(default=False)
+    recurrence_type = models.CharField(
+        max_length=20,
+        choices=RECURRENCE_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Type of recurrence pattern"
+    )
+    day_of_week = models.IntegerField(
+        choices=DAY_OF_WEEK_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Day of the week for SPECIFIC_DAY recurring events (0=Monday, 6=Sunday)"
+    )
+    scheduled_time = models.TimeField(
+        blank=True,
+        null=True,
+        help_text="Time of day for the recurring event"
+    )
+    
+    # Track cancelled instances for recurring events
+    cancelled_instances = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of ISO date strings for cancelled recurring event instances"
+    )
+    
+    # Analytics
+    share_count = models.IntegerField(default=0, help_text="Number of times this event has been shared")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -59,7 +108,9 @@ class Event(models.Model):
         ]
     
     def __str__(self):
-        return f"{self.title} - {self.start_datetime.strftime('%Y-%m-%d')}"
+        if self.start_datetime:
+            return f"{self.title} - {self.start_datetime.strftime('%Y-%m-%d')}"
+        return f"{self.title} (recurring)"
     
     @property
     def like_count(self):
@@ -72,25 +123,52 @@ class Event(models.Model):
     @property
     def is_upcoming(self):
         """Check if event is in the future"""
+        if not self.start_datetime:
+            return self.is_recurring  # recurring events are always "upcoming"
         return self.start_datetime > timezone.now()
     
     @property
     def is_ongoing(self):
         """Check if event is currently happening"""
+        if not self.start_datetime or not self.end_datetime:
+            return False
         now = timezone.now()
         return self.start_datetime <= now <= self.end_datetime
     
     @property
     def is_past(self):
         """Check if event has ended"""
+        if not self.end_datetime:
+            return False
         return self.end_datetime < timezone.now()
     
     @property
     def status(self):
         """Return current event status"""
+        if self.is_recurring and not self.start_datetime:
+            return "upcoming"
         if self.is_ongoing:
             return "ongoing"
         elif self.is_upcoming:
             return "upcoming"
         else:
             return "past"
+    
+    def get_schedule_display(self):
+        """Return human-readable schedule"""
+        if not self.is_recurring or not self.scheduled_time:
+            return "One-time event"
+        
+        time_str = self.scheduled_time.strftime('%I:%M %p')
+        
+        if self.recurrence_type == 'SPECIFIC_DAY':
+            day_name = dict(self.DAY_OF_WEEK_CHOICES)[self.day_of_week]
+            return f"Every {day_name} at {time_str}"
+        elif self.recurrence_type == 'DAILY':
+            return f"Daily at {time_str}"
+        elif self.recurrence_type == 'WEEKDAYS':
+            return f"Weekdays (Mon-Fri) at {time_str}"
+        elif self.recurrence_type == 'WEEKENDS':
+            return f"Weekends (Sat-Sun) at {time_str}"
+        else:
+            return "Custom schedule"

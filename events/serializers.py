@@ -18,10 +18,11 @@ class EventSerializer(serializers.ModelSerializer):
     organizer = EventOrganizerSerializer(read_only=True)
     like_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
-    status = serializers.CharField(source='status', read_only=True)
-    is_upcoming = serializers.BooleanField(source='is_upcoming', read_only=True)
-    is_ongoing = serializers.BooleanField(source='is_ongoing', read_only=True)
-    is_past = serializers.BooleanField(source='is_past', read_only=True)
+    status = serializers.CharField(read_only=True)
+    is_upcoming = serializers.BooleanField(read_only=True)
+    is_ongoing = serializers.BooleanField(read_only=True)
+    is_past = serializers.BooleanField(read_only=True)
+    schedule_display = serializers.SerializerMethodField()
     
     class Meta:
         model = Event
@@ -30,9 +31,12 @@ class EventSerializer(serializers.ModelSerializer):
             'organizer', 'start_datetime', 'end_datetime',
             'venue_name', 'address', 'is_virtual', 'meeting_link',
             'capacity', 'registration_link', 'registration_deadline',
-            'is_public', 'created_at', 'updated_at',
-            'like_count', 'comment_count',
-            'status', 'is_upcoming', 'is_ongoing', 'is_past'
+            'is_public', 'is_recurring', 'recurrence_type',
+            'day_of_week', 'scheduled_time',
+            'created_at', 'updated_at',
+            'like_count', 'comment_count', 'share_count',
+            'status', 'is_upcoming', 'is_ongoing', 'is_past',
+            'schedule_display'
         ]
         read_only_fields = ['organizer', 'created_at', 'updated_at']
     
@@ -64,6 +68,9 @@ class EventSerializer(serializers.ModelSerializer):
             )
         
         return data
+    
+    def get_schedule_display(self, obj):
+        return obj.get_schedule_display()
 
 
 class EventListSerializer(serializers.ModelSerializer):
@@ -82,14 +89,18 @@ class EventListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'banner_image', 'organizer',
             'start_datetime', 'end_datetime', 'venue_name',
-            'is_virtual', 'is_public', 'status',
-            'like_count'
+            'is_virtual', 'is_public',
+            'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time',
+            'status', 'like_count', 'share_count'
         ]
         read_only_fields = fields
 
 
 class EventCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating events"""
+    start_datetime = serializers.DateTimeField(required=False, allow_null=True)
+    end_datetime = serializers.DateTimeField(required=False, allow_null=True)
+    
     class Meta:
         model = Event
         fields = [
@@ -97,24 +108,42 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             'start_datetime', 'end_datetime',
             'venue_name', 'address', 'is_virtual', 'meeting_link',
             'capacity', 'registration_link', 'registration_deadline',
-            'is_public'
+            'is_public', 'is_recurring', 'recurrence_type',
+            'day_of_week', 'scheduled_time'
         ]
     
     def validate(self, data):
-        """Validate event dates"""
+        """Validate event based on whether it's recurring or one-off"""
+        is_recurring = data.get('is_recurring', False)
+        
+        if is_recurring:
+            # Recurring events need recurrence_type and scheduled_time
+            if not data.get('recurrence_type'):
+                raise serializers.ValidationError(
+                    "Recurring events must have a recurrence type."
+                )
+            if not data.get('scheduled_time'):
+                raise serializers.ValidationError(
+                    "Recurring events must have a scheduled time."
+                )
+            if data.get('recurrence_type') == 'SPECIFIC_DAY' and data.get('day_of_week') is None:
+                raise serializers.ValidationError(
+                    "Specific day recurrence requires a day_of_week."
+                )
+        else:
+            # One-off events need start_datetime
+            if not data.get('start_datetime'):
+                raise serializers.ValidationError(
+                    "One-off events must have a start date/time."
+                )
+        
+        # Validate date ordering if both are provided
         start_datetime = data.get('start_datetime')
         end_datetime = data.get('end_datetime')
-        
         if start_datetime and end_datetime:
             if end_datetime <= start_datetime:
                 raise serializers.ValidationError(
                     "End date/time must be after start date/time."
                 )
-        
-        # Validate virtual event has meeting link
-        if data.get('is_virtual') and not data.get('meeting_link'):
-            raise serializers.ValidationError(
-                "Virtual events must have a meeting link."
-            )
         
         return data
