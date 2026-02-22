@@ -9,14 +9,21 @@ class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'email', 'role', 'is_verified', 'is_staff', 'date_joined']
     list_filter = ['role', 'is_verified', 'is_staff', 'is_superuser']
     search_fields = ['username', 'email', 'first_name', 'last_name']
+    readonly_fields = ['date_joined', 'last_login']
     
-    fieldsets = BaseUserAdmin.fieldsets + (
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'email', 'display_name')}),
         ('Role & Profile', {
-            'fields': ('role', 'bio', 'profile_picture', 'cover_photo', 'is_verified')
+            'fields': ('role', 'bio', 'profile_picture', 'cover_photo', 'is_verified', 'stacks_address')
         }),
         ('Social Links', {
             'fields': ('website', 'twitter', 'instagram', 'youtube')
         }),
+        ('Permissions', {
+            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+        }),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
     
     add_fieldsets = BaseUserAdmin.add_fieldsets + (

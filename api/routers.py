@@ -5,6 +5,7 @@ from events.views import EventViewSet
 from users.views import UserViewSet, LikeViewSet, CommentViewSet, FollowViewSet, NotificationViewSet
 from users.wallet_auth import WalletAuthViewSet
 from api.views import FeedbackViewSet
+from posts.views import PostViewSet
 
 
 router = routers.DefaultRouter()
@@ -24,6 +25,9 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 
 # Feedback
 router.register(r'feedback', FeedbackViewSet, basename='feedback')
+
+# Posts / Feed
+router.register(r'posts', PostViewSet, basename='post')
 
 # Wallet Authentication
 router.register(r'auth/wallet', WalletAuthViewSet, basename='wallet-auth')

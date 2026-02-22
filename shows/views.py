@@ -50,7 +50,7 @@ class ShowViewSet(viewsets.ModelViewSet):
     - ?creator=15 - Filter by creator ID
     - ?status=published - Filter by status
     """
-    queryset = Show.objects.select_related('creator').prefetch_related('tags').annotate(
+    queryset = Show.objects.select_related('creator').prefetch_related('tags', 'co_hosts').annotate(
         _like_count=Count('likes', distinct=True),
         _comment_count=Count('comments', distinct=True)
     ).prefetch_related('likes', 'comments')
@@ -80,10 +80,12 @@ class ShowViewSet(viewsets.ModelViewSet):
             if not self.request.user.is_authenticated:
                 queryset = queryset.filter(status='published')
         
-        # Filter by creator
+        # Filter by creator (also includes shows where user is co-host)
         creator_id = self.request.query_params.get('creator')
         if creator_id:
-            queryset = queryset.filter(creator_id=creator_id)
+            queryset = queryset.filter(
+                Q(creator_id=creator_id) | Q(co_hosts__id=creator_id)
+            ).distinct()
         
         # Filter by tags (comma-separated tag IDs)
         tags_param = self.request.query_params.get('tags')
@@ -128,9 +130,11 @@ class ShowViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def my_shows(self, request):
-        """Get current user's shows with counts"""
+        """Get current user's shows (owned + co-hosted) with counts"""
         # get_queryset() already has annotations from base queryset
-        shows = self.get_queryset().filter(creator=request.user)
+        shows = self.get_queryset().filter(
+            Q(creator=request.user) | Q(co_hosts=request.user)
+        ).distinct()
         serializer = self.get_serializer(shows, many=True)
         return Response(serializer.data)
     

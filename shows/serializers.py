@@ -37,6 +37,7 @@ class ShowSerializer(serializers.ModelSerializer):
     creator = ShowCreatorSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     guests = ShowCreatorSerializer(many=True, read_only=True)
+    co_hosts = ShowCreatorSerializer(many=True, read_only=True)
     like_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
     schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
@@ -45,7 +46,7 @@ class ShowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Show
         fields = [
-            'id', 'slug', 'title', 'description', 'thumbnail', 'creator', 'tags', 'guests',
+            'id', 'slug', 'title', 'description', 'thumbnail', 'creator', 'tags', 'guests', 'co_hosts',
             'external_link', 'link_platform',
             'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time', 'schedule_display',
             'status', 'created_at', 'updated_at',
@@ -96,6 +97,7 @@ class ShowListSerializer(serializers.ModelSerializer):
     creator = ShowCreatorSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     guests = ShowCreatorSerializer(many=True, read_only=True)
+    co_hosts = ShowCreatorSerializer(many=True, read_only=True)
     like_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
     schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
@@ -103,7 +105,7 @@ class ShowListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Show
         fields = [
-            'id', 'slug', 'title', 'description', 'thumbnail', 'creator', 'tags', 'guests',
+            'id', 'slug', 'title', 'description', 'thumbnail', 'creator', 'tags', 'guests', 'co_hosts',
             'external_link', 'link_platform',
             'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time', 'schedule_display',
             'status', 'created_at', 'like_count', 'comment_count', 'share_count'
@@ -133,6 +135,12 @@ class ShowCreateSerializer(serializers.ModelSerializer):
         required=False,
         help_text="List of tag names to create/assign (alternative to tag_ids)"
     )
+    co_host_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text="List of user IDs to assign as co-hosts"
+    )
     
     class Meta:
         model = Show
@@ -140,7 +148,7 @@ class ShowCreateSerializer(serializers.ModelSerializer):
             'title', 'description', 'thumbnail',
             'external_link', 'link_platform',
             'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time',
-            'status', 'tag_ids', 'tag_names'
+            'status', 'tag_ids', 'tag_names', 'co_host_ids'
         ]
     
     def validate(self, data):
@@ -169,10 +177,11 @@ class ShowCreateSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
-        """Create show with tags"""
-        # Extract tags
+        """Create show with tags and co-hosts"""
+        # Extract tags and co-hosts
         tag_ids = validated_data.pop('tag_ids', None)
         tag_names = validated_data.pop('tag_names', None)
+        co_host_ids = validated_data.pop('co_host_ids', None)
         
         # Create show
         show = Show.objects.create(**validated_data)
@@ -191,13 +200,34 @@ class ShowCreateSerializer(serializers.ModelSerializer):
                 )
                 show.tags.add(tag)
         
+        # Handle co-hosts
+        if co_host_ids is not None:
+            show.co_hosts.set(co_host_ids)
+            # Send notifications to co-hosts
+            from users.models import Notification
+            from django.contrib.contenttypes.models import ContentType
+            show_ct = ContentType.objects.get_for_model(Show)
+            for uid in co_host_ids:
+                try:
+                    user = User.objects.get(id=uid)
+                    Notification.objects.create(
+                        recipient=user,
+                        actor=show.creator,
+                        notification_type='co_host_added',
+                        content_type=show_ct,
+                        object_id=show.id
+                    )
+                except User.DoesNotExist:
+                    pass
+        
         return show
     
     def update(self, instance, validated_data):
-        """Update show with tags"""
-        # Extract tags
+        """Update show with tags and co-hosts"""
+        # Extract tags and co-hosts
         tag_ids = validated_data.pop('tag_ids', None)
         tag_names = validated_data.pop('tag_names', None)
+        co_host_ids = validated_data.pop('co_host_ids', None)
         
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -217,6 +247,32 @@ class ShowCreateSerializer(serializers.ModelSerializer):
                     defaults={'slug': tag_name.lower().replace(' ', '-')}
                 )
                 instance.tags.add(tag)
+        
+        # Handle co-hosts
+        if co_host_ids is not None:
+            # Find newly added co-hosts to notify them
+            current_co_host_ids = set(instance.co_hosts.values_list('id', flat=True))
+            new_co_host_ids = set(co_host_ids) - current_co_host_ids
+            
+            instance.co_hosts.set(co_host_ids)
+            
+            # Send notifications to newly added co-hosts
+            if new_co_host_ids:
+                from users.models import Notification
+                from django.contrib.contenttypes.models import ContentType
+                show_ct = ContentType.objects.get_for_model(Show)
+                for uid in new_co_host_ids:
+                    try:
+                        user = User.objects.get(id=uid)
+                        Notification.objects.create(
+                            recipient=user,
+                            actor=instance.creator,
+                            notification_type='co_host_added',
+                            content_type=show_ct,
+                            object_id=instance.id
+                        )
+                    except User.DoesNotExist:
+                        pass
         
         return instance
 

@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -398,6 +398,124 @@ class UserViewSet(viewsets.ModelViewSet):
         """Get current authenticated user's profile"""
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+    # ============================================
+    # ADMIN DASHBOARD ENDPOINTS (Staff only)
+    # ============================================
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminUser], url_path='admin-stats')
+    def admin_stats(self, request):
+        """
+        Get platform overview stats for admin dashboard.
+        GET /api/users/admin-stats/
+        Staff only.
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        from shows.models import Show
+        from news.models import News
+        from events.models import Event
+        from api.models import Feedback
+
+        now = timezone.now()
+        thirty_days_ago = now - timedelta(days=30)
+        seven_days_ago = now - timedelta(days=7)
+
+        # Core counts
+        total_users = User.objects.count()
+        total_creators = User.objects.filter(role='creator').count()
+        total_regular_users = User.objects.filter(role='user').count()
+        total_shows = Show.objects.count()
+        total_events = Event.objects.count()
+        total_news = News.objects.count()
+
+        # Recent activity
+        new_users_7d = User.objects.filter(date_joined__gte=seven_days_ago).count()
+        new_users_30d = User.objects.filter(date_joined__gte=thirty_days_ago).count()
+
+        # Engagement
+        total_likes = Like.objects.count()
+        total_comments = Comment.objects.count()
+        total_follows = Follow.objects.count()
+
+        # Feedback
+        total_feedback = Feedback.objects.count()
+        unresolved_feedback = Feedback.objects.filter(resolved=False).count()
+
+        # Recent signups (last 10)
+        recent_users = User.objects.order_by('-date_joined')[:10]
+        recent_users_data = UserListSerializer(recent_users, many=True, context={'request': request}).data
+
+        return Response({
+            'overview': {
+                'total_users': total_users,
+                'total_creators': total_creators,
+                'total_regular_users': total_regular_users,
+                'total_shows': total_shows,
+                'total_events': total_events,
+                'total_news': total_news,
+            },
+            'activity': {
+                'new_users_7d': new_users_7d,
+                'new_users_30d': new_users_30d,
+                'total_likes': total_likes,
+                'total_comments': total_comments,
+                'total_follows': total_follows,
+            },
+            'feedback': {
+                'total': total_feedback,
+                'unresolved': unresolved_feedback,
+            },
+            'recent_users': recent_users_data,
+        })
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminUser], url_path='admin-users')
+    def admin_users(self, request):
+        """
+        Get all users for admin management.
+        GET /api/users/admin-users/?search=&role=&page=
+        Staff only.
+        """
+        queryset = User.objects.all().order_by('-date_joined')
+
+        # Filters
+        role = request.query_params.get('role')
+        if role:
+            queryset = queryset.filter(role=role)
+
+        search = request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(username__icontains=search)
+
+        is_verified = request.query_params.get('is_verified')
+        if is_verified is not None:
+            queryset = queryset.filter(is_verified=is_verified.lower() == 'true')
+
+        # Paginate
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = UserListSerializer(page, many=True, context={'request': request})
+            return self.get_paginated_response(serializer.data)
+
+        serializer = UserListSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser], url_path='toggle-verification')
+    def admin_toggle_verification(self, request, pk=None):
+        """
+        Toggle user verification status.
+        POST /api/users/{id}/toggle-verification/
+        Staff only.
+        """
+        user = self.get_object()
+        user.is_verified = not user.is_verified
+        user.save(update_fields=['is_verified'])
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'is_verified': user.is_verified,
+            'message': f'User {"verified" if user.is_verified else "unverified"} successfully'
+        })
 
 
 class LikeViewSet(viewsets.ModelViewSet):

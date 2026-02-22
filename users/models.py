@@ -218,6 +218,7 @@ class Notification(models.Model):
         ('guest_request', 'Guest Request'),
         ('guest_accepted', 'Guest Accepted'),
         ('guest_declined', 'Guest Declined'),
+        ('co_host_added', 'Co-Host Added'),
     ]
     
     recipient = models.ForeignKey(

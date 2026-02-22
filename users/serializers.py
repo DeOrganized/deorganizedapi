@@ -19,7 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'display_name', 'email', 'first_name', 'last_name',
             'role', 'stacks_address', 'bio', 'profile_picture', 'cover_photo',
             'website', 'twitter', 'instagram', 'youtube',
-            'is_verified', 'date_joined',
+            'is_verified', 'is_staff', 'date_joined',
             'follower_count', 'following_count', 'is_creator'
         ]
         read_only_fields = ['id', 'date_joined', 'is_verified']
@@ -37,7 +37,8 @@ class UserListSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'profile_picture', 
-            'role', 'is_verified', 'is_creator', 'follower_count', 'bio'
+            'role', 'is_verified', 'is_staff', 'is_creator', 'follower_count', 'bio',
+            'stacks_address', 'date_joined'
         ]
         read_only_fields = fields
 
@@ -363,11 +364,43 @@ class CompleteSetupSerializer(serializers.Serializer):
 class NotificationSerializer(serializers.ModelSerializer):
     """Serializer for user notifications"""
     actor = UserListSerializer(read_only=True)
+    content_type_name = serializers.SerializerMethodField()
+    show_slug = serializers.SerializerMethodField()
+    show_title = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
         fields = [
             'id', 'recipient', 'actor', 'notification_type',
-            'content_type', 'object_id', 'is_read', 'created_at'
+            'content_type', 'object_id', 'content_type_name',
+            'show_slug', 'show_title', 'is_read', 'created_at'
         ]
         read_only_fields = ['id', 'recipient', 'actor', 'created_at']
+    
+    def get_content_type_name(self, obj):
+        """Return the model name of the content type (e.g., 'show', 'post', 'event')"""
+        if obj.content_type:
+            return obj.content_type.model
+        return None
+    
+    def get_show_slug(self, obj):
+        """Return slug if the notification references a Show"""
+        if obj.content_type and obj.content_type.model == 'show' and obj.object_id:
+            try:
+                from shows.models import Show
+                show = Show.objects.filter(id=obj.object_id).values_list('slug', flat=True).first()
+                return show
+            except Exception:
+                pass
+        return None
+    
+    def get_show_title(self, obj):
+        """Return title if the notification references a Show"""
+        if obj.content_type and obj.content_type.model == 'show' and obj.object_id:
+            try:
+                from shows.models import Show
+                show = Show.objects.filter(id=obj.object_id).values_list('title', flat=True).first()
+                return show
+            except Exception:
+                pass
+        return None

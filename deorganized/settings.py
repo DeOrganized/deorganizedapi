@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'events',
     'shows',
     'api',
+    'posts',
 ]
 
 # Custom User Model

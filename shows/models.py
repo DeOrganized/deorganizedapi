@@ -84,6 +84,14 @@ class Show(models.Model):
         help_text="Creators appearing as guests on this show"
     )
     
+    # Co-hosts for this show (show appears on their profile/dashboard)
+    co_hosts = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='co_hosted_shows',
+        blank=True,
+        help_text="Co-hosts who share this show on their profile"
+    )
+    
     # External links (Watch Now functionality)
     external_link = models.URLField(
         blank=True,
