@@ -75,7 +75,8 @@ class ShowViewSet(viewsets.ModelViewSet):
     """
     queryset = Show.objects.select_related('creator').prefetch_related('tags', 'co_hosts').annotate(
         _like_count=Count('likes', distinct=True),
-        _comment_count=Count('comments', distinct=True)
+        _comment_count=Count('comments', distinct=True),
+        episode_count=Count('episodes', distinct=True)
     ).prefetch_related('likes', 'comments')
     permission_classes = [IsCreatorOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

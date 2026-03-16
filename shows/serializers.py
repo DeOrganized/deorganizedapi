@@ -44,6 +44,7 @@ class ShowSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
     schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
     episodes = ShowEpisodeSerializer(many=True, read_only=True)
+    episode_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Show
@@ -52,9 +53,9 @@ class ShowSerializer(serializers.ModelSerializer):
             'external_link', 'link_platform',
             'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time', 'schedule_display',
             'status', 'created_at', 'updated_at',
-            'like_count', 'comment_count', 'share_count', 'episodes'
+            'like_count', 'comment_count', 'share_count', 'episodes', 'episode_count'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'creator', 'slug', 'share_count']
+        read_only_fields = ['created_at', 'updated_at', 'creator', 'slug', 'share_count', 'episode_count']
     
     def get_like_count(self, obj):
         """Get like count from annotation"""
@@ -103,6 +104,7 @@ class ShowListSerializer(serializers.ModelSerializer):
     like_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
     schedule_display = serializers.CharField(source='get_schedule_display', read_only=True)
+    episode_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Show
@@ -110,7 +112,7 @@ class ShowListSerializer(serializers.ModelSerializer):
             'id', 'slug', 'title', 'description', 'thumbnail', 'creator', 'tags', 'guests', 'co_hosts',
             'external_link', 'link_platform',
             'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time', 'schedule_display',
-            'status', 'created_at', 'like_count', 'comment_count', 'share_count'
+            'status', 'created_at', 'like_count', 'comment_count', 'share_count', 'episode_count'
         ]
         read_only_fields = fields
     
