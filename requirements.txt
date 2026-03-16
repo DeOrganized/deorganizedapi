@@ -4,6 +4,7 @@ djangorestframework-simplejwt==5.3.1
 django-cors-headers==4.6.0
 Pillow==11.1.0
 python-dateutil==2.9.0.post0
+pytz==2024.1
 whitenoise==6.8.2
 gunicorn==23.0.0
 coincurve==16.0.0
