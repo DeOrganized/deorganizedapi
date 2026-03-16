@@ -236,6 +236,24 @@ def ops_set_playlist(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @production_staff_required
+def ops_set_playlist_order(request):
+    """POST /ops/set-playlist-order/ — set the track order within a DCPE playlist. Staff-only."""
+    try:
+        body = json.loads(request.body)
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/set-playlist-order/",
+            json=body,
+            headers=DCPE_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@production_staff_required
 def ops_advance(request):
     """POST /ops/advance/ — skip to next track. Staff-only until per-creator Railway instances are provisioned."""
     try:

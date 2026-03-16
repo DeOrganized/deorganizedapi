@@ -13,6 +13,7 @@ urlpatterns = [
     path('status/', views_ops.ops_status, name='status'),
     path('playlists/', views_ops.ops_playlists, name='playlists'),
     path('set-playlist/', views_ops.ops_set_playlist, name='set_playlist'),
+    path('set-playlist-order/', views_ops.ops_set_playlist_order, name='set_playlist_order'),
     path('advance/', views_ops.ops_advance, name='advance'),
     path('stream-start/', views_ops.ops_stream_start, name='stream_start'),
     path('stream-stop/', views_ops.ops_stream_stop, name='stream_stop'),
