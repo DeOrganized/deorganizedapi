@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from api.views import health_check, serve_media
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -29,17 +30,25 @@ urlpatterns = [
     
     # API Routes
     path('api/', include('api.routers')),
+    path('api/', include('merch.urls')),
+    path('api/messages/', include('messaging.urls')),
+    
+    # DCPE Operations proxy endpoints
+    path('ops/', include('api.urls_ops')),
     
     # JWT Authentication
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     
+    # Health Check (Public)
+    path('health/', health_check, name='health_check'),
+    
     # Debug endpoint (remove in production later)
     path('api/debug/media/', lambda request: __import__('api.debug_views', fromlist=['debug_media_files']).debug_media_files(request)),
     
     # Custom media serving (bypasses WhiteNoise)
-    re_path(r'^media/(?P<path>.*)$', lambda request, path: __import__('api.debug_views', fromlist=['serve_media']).serve_media(request, path)),
+    re_path(r'^media/(?P<path>.*)$', serve_media, name='serve_media'),
 ]
 
 # Serve static files in development only (production uses collectstatic)

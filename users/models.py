@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -51,6 +52,40 @@ class User(AbstractUser):
     
     # Verification
     is_verified = models.BooleanField(default=False)
+
+    # Broadcast schedule (for creators)
+    broadcast_time = models.TimeField(
+        null=True, blank=True,
+        help_text="Daily broadcast start time"
+    )
+    broadcast_days = models.JSONField(
+        default=list, blank=True,
+        help_text="List of day indices (0=Mon, 6=Sun) for scheduled broadcasts"
+    )
+    broadcast_timezone = models.CharField(
+        max_length=50, default='UTC', blank=True,
+        help_text="Timezone for broadcast schedule (e.g. 'America/New_York')"
+    )
+
+    # DM pay-gate preferences (Phase 10)
+    dm_paygate_enabled = models.BooleanField(
+        default=False,
+        help_text="If True, require x402 payment to send a DM to this creator"
+    )
+    dm_price_stx = models.BigIntegerField(
+        default=0,
+        help_text="Price in microSTX to send a DM"
+    )
+    dm_price_usdcx = models.BigIntegerField(
+        default=0,
+        help_text="Price in micro-USDCx to send a DM"
+    )
+
+    # Payout address for tips and merch (can differ from login wallet)
+    payout_stx_address = models.CharField(
+        max_length=255, blank=True,
+        help_text="STX address for receiving payments (tips, merch). Falls back to stacks_address."
+    )
     
     # Timestamps
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -260,3 +295,142 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.actor.username} {self.notification_type} → {self.recipient.username}"
+
+
+class RTMPDestination(models.Model):
+    """
+    RTMP streaming destination for a creator.
+    Stores stream keys and RTMP URLs for platforms like YouTube, Twitch, X, etc.
+    """
+    PLATFORM_CHOICES = [
+        ('youtube', 'YouTube'),
+        ('twitch', 'Twitch'),
+        ('twitter', 'X / Twitter'),
+        ('kick', 'Kick'),
+        ('rumble', 'Rumble'),
+        ('custom', 'Custom'),
+    ]
+
+    # Default RTMP URLs per platform
+    DEFAULT_RTMP_URLS = {
+        'youtube': 'rtmp://a.rtmp.youtube.com/live2',
+        'twitch': 'rtmp://live.twitch.tv/app',
+        'twitter': 'rtmps://va.pscp.tv:443/x',
+        'kick': 'rtmps://fa723fc1b171.global-contribute.live-video.net/app',
+        'rumble': 'rtmp://live.rumble.com/live',
+        'custom': '',
+    }
+
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        related_name='rtmp_destinations'
+    )
+    platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES)
+    stream_key = models.CharField(max_length=500, help_text="Stream key (kept server-side)")
+    rtmp_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="RTMP ingest URL (auto-filled per platform, editable for custom)"
+    )
+    label = models.CharField(max_length=100, blank=True, help_text="Friendly label, e.g. 'My YouTube Channel'")
+    is_active = models.BooleanField(default=True, help_text="Whether this destination is currently enabled")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_active', '-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+        ]
+
+    def save(self, *args, **kwargs):
+        # Auto-fill RTMP URL from platform defaults if not set
+        if not self.rtmp_url and self.platform in self.DEFAULT_RTMP_URLS:
+            self.rtmp_url = self.DEFAULT_RTMP_URLS[self.platform]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.username} — {self.get_platform_display()} ({self.label or 'No label'})"
+
+
+class Subscription(models.Model):
+    """
+    Creator subscription plan — determines access to playout features.
+    """
+    PLAN_CHOICES = [
+        ('free', 'Free'),
+        ('starter', 'Starter'),
+        ('pro', 'Pro'),
+        ('enterprise', 'Enterprise'),
+    ]
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled'),
+        ('trial', 'Trial'),
+    ]
+
+    user = models.OneToOneField(
+        'User',
+        on_delete=models.CASCADE,
+        related_name='subscription'
+    )
+    plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    started_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    stx_address = models.CharField(
+        max_length=100, blank=True,
+        help_text="Stacks address used for payment"
+    )
+    stx_tx_id = models.CharField(
+        max_length=100, blank=True,
+        help_text="Last payment transaction ID"
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'status']),
+        ]
+
+    @property
+    def is_active(self):
+        if self.status != 'active':
+            return False
+        if self.expires_at and self.expires_at < timezone.now():
+            return False
+        return True
+
+    @property
+    def plan_display(self):
+        return self.get_plan_display()
+
+    def __str__(self):
+        return f"{self.user.username} — {self.get_plan_display()} ({self.status})"
+
+
+class CreatorPlaylist(models.Model):
+    """
+    Maps DCPE playlist names to specific creators for access control.
+    Admins assign playlists to creators; creators only see their own.
+    """
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='creator_playlists'
+    )
+    dcpe_playlist_name = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Exact playlist name as it appears in DCPE"
+    )
+    label = models.CharField(
+        max_length=255, blank=True,
+        help_text="Friendly display name (optional, shows DCPE name if empty)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['user', 'dcpe_playlist_name']
+        ordering = ['dcpe_playlist_name']
+
+    def __str__(self):
+        return f"{self.user.username} → {self.dcpe_playlist_name}"

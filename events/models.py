@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 class Event(models.Model):
@@ -9,6 +10,7 @@ class Event(models.Model):
     Model representing events with scheduling, location, and registration support.
     """
     title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=300, unique=True, blank=True)
     description = models.TextField()
     banner_image = models.ImageField(
         upload_to='events/banners/',
@@ -111,6 +113,22 @@ class Event(models.Model):
         if self.start_datetime:
             return f"{self.title} - {self.start_datetime.strftime('%Y-%m-%d')}"
         return f"{self.title} (recurring)"
+    
+    def save(self, *args, **kwargs):
+        """Auto-generate slug from title if not set"""
+        if not self.slug:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            
+            # Ensure unique slug
+            while Event.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            self.slug = slug
+        
+        super().save(*args, **kwargs)
     
     @property
     def like_count(self):

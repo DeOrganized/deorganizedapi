@@ -8,13 +8,13 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-n9ms2)98d0onmkbv@x#8v-w8jp*^pb%po12zj)pj2x+$c-b&m$')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 
-# Production: PythonAnywhere will set this
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Production
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',')
 
 
 # Application definition
@@ -38,6 +38,9 @@ INSTALLED_APPS = [
     'shows',
     'api',
     'posts',
+    'merch',
+    'payments',
+    'messaging',
 ]
 
 # Custom User Model
@@ -125,7 +128,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Whitenoise configuration for serving static files
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 # Tell WhiteNoise to NOT handle media files - let Django serve them
 WHITENOISE_AUTOREFRESH = True
@@ -143,6 +146,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS Settings - Allow all origins for development
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = [
+    'payment-required',
+    'payment-response',
+]
+CORS_ALLOW_HEADERS = [
+    # defaults
+    'accept', 'accept-encoding', 'authorization', 'content-type',
+    'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with',
+    # x402 custom headers
+    'payment-signature', 'x-payment-token-type',
+]
+
+# Stacks Network Configuration
+STACKS_NETWORK = os.environ.get('STACKS_NETWORK', 'mainnet')
+
 
 # Security settings for production
 if not DEBUG:
@@ -194,4 +212,47 @@ SIMPLE_JWT = {
     
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
+}
+
+# ---------------------------------------------------------------------------
+# DCPE (Digital Content Processing Engine) Configuration
+# ---------------------------------------------------------------------------
+DCPE_BASE_URL = os.environ.get('DCPE_BASE_URL', '')
+DCPE_API_KEY = os.environ.get('DCPE_API_KEY', '')
+
+# Railway API (for set-mode / remove via GraphQL)
+RAILWAY_API_TOKEN = os.environ.get('RAILWAY_API_TOKEN', '')
+RAILWAY_PROJECT_ID = os.environ.get('RAILWAY_PROJECT_ID', '')
+RAILWAY_SERVICE_ID = os.environ.get('RAILWAY_SERVICE_ID', '')
+RAILWAY_ENV_ID = os.environ.get('RAILWAY_ENV_ID', '')
+
+# Platform Configuration
+PLATFORM_WALLET_ADDRESS = os.environ.get('PLATFORM_WALLET_ADDRESS', '')
+# Celery Configuration
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+# Celery Beat Schedule
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'check-upcoming-shows-every-5-min': {
+        'task': 'shows.tasks.check_upcoming_shows',
+        'schedule': crontab(minute='*/5'),
+    },
+    'register-airing-episodes-every-minute': {
+        'task': 'shows.tasks.register_airing_episodes',
+        'schedule': crontab(minute='*'),
+    },
+    'auto-cancel-unconfirmed-shows-every-5-min': {
+        'task': 'shows.tasks.auto_cancel_unconfirmed_shows',
+        'schedule': crontab(minute='*/5'),
+    },
+    'cleanup-old-notifications-daily': {
+        'task': 'shows.tasks.cleanup_old_notifications',
+        'schedule': crontab(hour=0, minute=0),
+    },
 }

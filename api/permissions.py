@@ -64,9 +64,14 @@ class IsCreatorOrReadOnly(permissions.BasePermission):
             return True
         
         # Edit/Delete only for owner
+        # Check direct creator
         if hasattr(obj, 'creator'):
             return obj.creator == request.user
         
+        # Check show creator for episodes
+        if hasattr(obj, 'show') and hasattr(obj.show, 'creator'):
+            return obj.show.creator == request.user
+            
         return False
 
 

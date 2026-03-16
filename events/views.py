@@ -36,6 +36,25 @@ class EventViewSet(viewsets.ModelViewSet):
     ordering_fields = ['start_datetime', 'created_at', 'like_count']
     ordering = ['start_datetime']
     
+    def get_object(self):
+        """Support lookup by slug or numeric ID"""
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get('pk', '')
+        
+        # Try slug lookup first, then fall back to numeric ID
+        if lookup_value.isdigit():
+            from django.db.models import Q
+            obj = queryset.filter(Q(slug=lookup_value) | Q(pk=int(lookup_value))).first()
+        else:
+            obj = queryset.filter(slug=lookup_value).first()
+        
+        if obj is None:
+            from django.http import Http404
+            raise Http404("Event not found")
+        
+        self.check_object_permissions(self.request, obj)
+        return obj
+    
     def get_serializer_class(self):
         if self.action == 'list':
             return EventListSerializer

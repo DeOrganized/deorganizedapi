@@ -30,7 +30,7 @@ def check_upcoming_shows():
             check_datetime = now + timedelta(minutes=minutes_ahead)
             check_date = check_datetime.date()
             
-            # Check if show should air on this date
+            # Check if show should air on this date using the model method
             if show.should_air_on_date(check_date):
                 # Construct the scheduled datetime
                 scheduled_datetime = timezone.make_aware(
@@ -113,3 +113,84 @@ def cleanup_old_notifications():
     
     print(f"Cleaned up {deleted_count} old notifications")
     return deleted_count
+@shared_task
+def auto_create_recurring_episodes():
+    """
+    Daily task to ensure recurring shows have future episodes provisioned.
+    Ensures at least the next 5 episodes are created.
+    """
+    from .models import Show, ShowEpisode
+    
+    recurring_shows = Show.objects.filter(is_recurring=True, status='published')
+    created_count = 0
+    
+    for show in recurring_shows:
+        # Get next 5 occurrences
+        upcoming = show.get_upcoming_occurrences(count=5)
+        
+        for occurrence in upcoming:
+            air_date = occurrence.date()
+            
+            # Check if episode exists
+            if not ShowEpisode.objects.filter(show=show, air_date=air_date).exists():
+                # Get next episode number
+                last_ep = ShowEpisode.objects.filter(show=show).order_by('-episode_number').first()
+                next_num = (last_ep.episode_number + 1) if last_ep else 1
+                
+                ShowEpisode.objects.create(
+                    show=show,
+                    episode_number=next_num,
+                    title=f"Episode {next_num}",
+                    description=f"Automated episode for {show.title}",
+                    air_date=air_date,
+                    is_premium=False
+                )
+                created_count += 1
+                
+    return f"Created {created_count} episodes for recurring shows."
+@shared_task
+def register_airing_episodes():
+    """
+    Checks for shows that should air RIGHT NOW and ensures an episode record exists.
+    Runs every minute via Celery Beat.
+    """
+    from .models import Show, ShowEpisode
+    
+    now = timezone.now()
+    current_time = now.time()
+    current_date = now.date()
+    
+    # Standardize to 1-minute precision for matching
+    target_time = current_time.replace(second=0, microsecond=0)
+    
+    # Find active recurring shows
+    recurring_shows = Show.objects.filter(is_recurring=True, status='published')
+    registered_count = 0
+    
+    for show in recurring_shows:
+        if not show.scheduled_time:
+            continue
+            
+        # Standardize show time to 1-minute precision
+        show_time = show.scheduled_time.replace(second=0, microsecond=0)
+        
+        # Check if the show is scheduled for this time AND this date
+        if show_time == target_time and show.should_air_on_date(current_date):
+            # Check if episode already exists for this date
+            if not ShowEpisode.objects.filter(show=show, air_date=current_date).exists():
+                # Get next episode number
+                last_ep = ShowEpisode.objects.filter(show=show).order_by('-episode_number').first()
+                next_num = (last_ep.episode_number + 1) if last_ep else 1
+                
+                ShowEpisode.objects.create(
+                    show=show,
+                    episode_number=next_num,
+                    title=f"Episode {next_num} - {current_date.strftime('%B %d')}",
+                    description=f"Automated live episode for {show.title}",
+                    air_date=current_date,
+                    is_premium=False
+                )
+                registered_count += 1
+                print(f"Registered live episode for {show.title} at {target_time}")
+                
+    return f"Registered {registered_count} live episodes."

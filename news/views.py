@@ -33,7 +33,30 @@ class NewsViewSet(viewsets.ModelViewSet):
     search_fields = ['title', 'content', 'tags']
     ordering_fields = ['published_at', 'created_at', 'view_count', 'like_count']
     ordering = ['-published_at']
-    
+    lookup_field = 'slug'
+
+    def get_object(self):
+        """Support lookup by slug or numeric ID fallback"""
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field) or self.kwargs.get('pk')
+        
+        if not lookup_value:
+            from django.http import Http404
+            raise Http404("No lookup value provided")
+
+        from django.db.models import Q
+        if str(lookup_value).isdigit():
+            obj = queryset.filter(Q(slug=lookup_value) | Q(pk=int(lookup_value))).first()
+        else:
+            obj = queryset.filter(slug=lookup_value).first()
+            
+        if obj is None:
+            from django.http import Http404
+            raise Http404("Article not found")
+            
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def get_serializer_class(self):
         if self.action == 'list':
             return NewsListSerializer

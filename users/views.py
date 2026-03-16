@@ -9,14 +9,15 @@ from django.db.models import Count
 from django.core.cache import cache
 import uuid
 import time
-from .models import Like, Comment, Follow, Notification
+from .models import Like, Comment, Follow, Notification, RTMPDestination, Subscription, CreatorPlaylist
 from .serializers import (
     UserSerializer, UserListSerializer, UserRegistrationSerializer,
     UserUpdateSerializer,
     LikeSerializer, CommentSerializer, CommentCreateSerializer,
     FollowSerializer, CreatorProfileSerializer,
     WalletLoginOrCheckSerializer, CompleteSetupSerializer,
-    NotificationSerializer
+    NotificationSerializer, RTMPDestinationSerializer,
+    BroadcastScheduleSerializer, SubscriptionSerializer
 )
 
 User = get_user_model()
@@ -157,6 +158,50 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         serializer = CreatorProfileSerializer(user)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        """Get aggregate stats for a creator"""
+        from shows.models import Show
+        from events.models import Event
+        
+        user = self.get_object()
+        
+        # Aggregate counts
+        shows = Show.objects.filter(creator=user)
+        events = Event.objects.filter(organizer=user)
+        
+        # Engagement stats
+        # Assuming shows have likes/comments relation or using ContentType
+        total_likes = 0
+        total_comments = 0
+        total_views = 0
+        total_shares = 0
+        
+        for show in shows:
+            total_likes += show.likes.count()
+            total_comments += show.comments.count()
+            total_views += getattr(show, 'views_count', 0)
+            total_shares += getattr(show, 'share_count', 0)
+            
+        return Response({
+            'total_views': total_views,
+            'total_shares': total_shares,
+            'total_likes': total_likes,
+            'total_comments': total_comments,
+            'follower_count': user.follower_count,
+            'following_count': user.following_count,
+            'show_count': shows.count(),
+            'event_count': events.count(),
+        })
+
+    @action(detail=False, methods=['get'], url_path='by-username/(?P<username>[^/.]+)')
+    def fetch_by_username(self, request, username=None):
+        """Fetch user profile by username"""
+        from django.shortcuts import get_object_or_404
+        user = get_object_or_404(User, username=username)
+        serializer = self.get_serializer(user)
         return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
@@ -556,9 +601,31 @@ class LikeViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
     
+    @action(detail=False, methods=['get'])
+    def content_types(self, request):
+        """Get mapping of model names to ContentType IDs"""
+        from django.contrib.contenttypes.models import ContentType
+        from shows.models import Show
+        from posts.models import Post
+        from news.models import News
+        from events.models import Event
+        
+        models = [Show, Post, News, Event]
+        result = []
+        for model in models:
+            ct = ContentType.objects.get_for_model(model)
+            result.append({
+                'model': model.__name__.lower(),
+                'id': ct.id
+            })
+            
+        return Response(result)
+    
     @action(detail=False, methods=['post'])
     def toggle(self, request):
         """Toggle like on content (like if not liked, unlike if already liked)"""
+        from django.contrib.contenttypes.models import ContentType
+        
         content_type_id = request.data.get('content_type')
         object_id = request.data.get('object_id')
         
@@ -568,9 +635,26 @@ class LikeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Robustness: Verify ContentType exists
+        try:
+            ct = ContentType.objects.get(pk=content_type_id)
+        except ContentType.DoesNotExist:
+            return Response(
+                {'error': f'Invalid content_type_id: {content_type_id}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Robustness: Verify target object exists
+        model_class = ct.model_class()
+        if not model_class.objects.filter(pk=object_id).exists():
+             return Response(
+                {'error': f'Target object {object_id} for {ct.model} does not exist'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         like, created = Like.objects.get_or_create(
             user=request.user,
-            content_type_id=content_type_id,
+            content_type=ct,
             object_id=object_id
         )
         
@@ -768,4 +852,251 @@ class NotificationViewSet(viewsets.ModelViewSet):
             'status': 'all marked as read',
             'count': count
         })
+
+
+class RTMPDestinationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for RTMP streaming destinations.
+    
+    List: GET /api/rtmp-destinations/
+    Create: POST /api/rtmp-destinations/
+    Retrieve: GET /api/rtmp-destinations/{id}/
+    Update: PUT/PATCH /api/rtmp-destinations/{id}/
+    Delete: DELETE /api/rtmp-destinations/{id}/
+    
+    All endpoints are scoped to the authenticated user's destinations only.
+    """
+    serializer_class = RTMPDestinationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return RTMPDestination.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    # ------------------------------------------------------------------
+    # Broadcast Schedule (on UserViewSet)
+    # Access via:  POST /api/users/broadcast-schedule/
+    #              GET  /api/users/broadcast-schedule/
+    # ------------------------------------------------------------------
+
+
+class BroadcastScheduleViewSet(viewsets.ViewSet):
+    """
+    GET  /api/broadcast-schedule/ — return current user's broadcast schedule
+    POST /api/broadcast-schedule/ — update broadcast schedule
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        user = request.user
+        return Response({
+            'broadcast_time': str(user.broadcast_time) if user.broadcast_time else None,
+            'broadcast_days': user.broadcast_days or [],
+            'broadcast_timezone': user.broadcast_timezone or 'UTC',
+        })
+
+    def create(self, request):
+        serializer = BroadcastScheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        data = serializer.validated_data
+        if 'broadcast_time' in data:
+            user.broadcast_time = data['broadcast_time']
+        if 'broadcast_days' in data:
+            user.broadcast_days = data['broadcast_days']
+        if 'broadcast_timezone' in data:
+            user.broadcast_timezone = data['broadcast_timezone']
+        user.save(update_fields=['broadcast_time', 'broadcast_days', 'broadcast_timezone'])
+
+        return Response({
+            'broadcast_time': str(user.broadcast_time) if user.broadcast_time else None,
+            'broadcast_days': user.broadcast_days or [],
+            'broadcast_timezone': user.broadcast_timezone or 'UTC',
+        })
+
+
+class SubscriptionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Subscription management.
+
+    GET  /api/subscription/    — returns current user's subscription (auto-creates free tier)
+    PATCH /api/subscription/1/ — update subscription (e.g. after STX payment)
+    POST /api/subscription/upgrade/ — x402-gated plan upgrade
+    """
+    serializer_class = SubscriptionSerializer
+    permission_classes = [IsAuthenticated]
+
+    # Plan prices (human-readable, converted to micro in the action)
+    PLAN_PRICES = {
+        'starter': {'stx': 1, 'usdcx': 1},
+        'pro': {'stx': 1, 'usdcx': 1},
+        'enterprise': {'stx': 1, 'usdcx': 1},
+    }
+
+    def get_queryset(self):
+        return Subscription.objects.filter(user=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        # Auto-create free subscription if none exists
+        sub, created = Subscription.objects.get_or_create(
+            user=request.user,
+            defaults={'plan': 'free', 'status': 'active'}
+        )
+        serializer = self.get_serializer(sub)
+        return Response(serializer.data)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        old_plan = self.get_object().plan
+        instance = serializer.save()
+        new_plan = instance.plan
+
+        # Auto-create CreatorPlaylist when upgrading from free to a paid plan
+        if old_plan == 'free' and new_plan != 'free':
+            folder_name = f"creator_{instance.user.id}_{instance.user.username}"
+            CreatorPlaylist.objects.get_or_create(
+                user=instance.user,
+                dcpe_playlist_name=folder_name,
+                defaults={
+                    'label': f"{instance.user.display_name or instance.user.username}'s Content"
+                }
+            )
+
+    @action(detail=False, methods=['get'], url_path='plan-prices')
+    def plan_prices(self, request):
+        """GET /api/subscription/plan-prices/ — returns plan USDCx prices."""
+        return Response(self.PLAN_PRICES)
+
+    @action(detail=False, methods=['post'], url_path='upgrade')
+    def upgrade(self, request):
+        """
+        POST /api/subscription/upgrade/
+        Body: { "plan": "starter"|"pro"|"enterprise" }
+        x402-gated: triggers wallet payment, then upgrades subscription.
+        """
+        from payments.decorators import x402_required
+        from django.conf import settings
+        from payments.models import PaymentReceipt
+
+        target_plan = request.data.get('plan', '')
+        if target_plan not in self.PLAN_PRICES:
+            return Response(
+                {"error": f"Invalid plan. Choose from: {list(self.PLAN_PRICES.keys())}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        prices = self.PLAN_PRICES[target_plan]
+
+        def get_pay_to(req, **kw):
+            return getattr(settings, 'PLATFORM_WALLET_ADDRESS', 'SP...')
+
+        def get_amounts(req, **kw):
+            # Convert to micro-units (STX, USDCx, sBTC)
+            # sBTC: 1 USDCx ≈ 0.0000015 BTC → in satoshis (×100_000_000)
+            sbtc_per_usdcx = 0.0000015
+            return (
+                int(prices['stx'] * 1_000_000),
+                int(prices['usdcx'] * 1_000_000),
+                int(prices['usdcx'] * sbtc_per_usdcx * 100_000_000),
+            )
+
+        @x402_required(get_pay_to, get_amounts, description=f"Upgrade to {target_plan.title()} Plan")
+        def gated_upgrade(req, *a, **kw):
+            # Pass unique resource_id per plan to prevent bypass
+            kw['resource_id'] = f"subscription_{target_plan}"
+            sub, _ = Subscription.objects.get_or_create(
+                user=req.user,
+                defaults={'plan': 'free', 'status': 'active'}
+            )
+            old_plan = sub.plan
+            sub.plan = target_plan
+            sub.status = 'active'
+            sub.save()
+
+            # Auto-create DCPE folder when upgrading from free
+            if old_plan == 'free' and target_plan != 'free':
+                folder_name = f"creator_{sub.user.id}_{sub.user.username}"
+                CreatorPlaylist.objects.get_or_create(
+                    user=sub.user,
+                    dcpe_playlist_name=folder_name,
+                    defaults={
+                        'label': f"{sub.user.display_name or sub.user.username}'s Content"
+                    }
+                )
+
+            serializer = self.get_serializer(sub)
+            return Response(serializer.data)
+
+        return gated_upgrade(request, resource_id=f"subscription_{target_plan}")
+
+
+class TipViewSet(viewsets.ViewSet):
+    """
+    Endpoints for tipping creators via x402.
+    
+    GET  /api/tips/<creator_id>/payment-info/ — returns payTo address and creator info
+    POST /api/tips/<creator_id>/send/         — x402-gated tip submission
+    """
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['get'], url_path='payment-info')
+    def payment_info(self, request, pk=None):
+        """GET /api/tips/<creator_id>/payment-info/ — returns tip payment details."""
+        try:
+            creator = User.objects.get(pk=pk, role='creator')
+        except User.DoesNotExist:
+            return Response({"error": "Creator not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        pay_to = getattr(creator, 'payout_stx_address', '') or creator.stacks_address or ''
+        return Response({
+            "creator_id": creator.id,
+            "creator_username": creator.username,
+            "creator_display_name": creator.display_name or creator.username,
+            "pay_to": pay_to,
+            "profile_picture": creator.profile_picture.url if creator.profile_picture else None,
+        })
+
+    @action(detail=True, methods=['post'], url_path='send')
+    def send(self, request, pk=None):
+        """POST /api/tips/<creator_id>/send/ — x402-gated tip."""
+        from payments.decorators import x402_required
+        from payments.models import PaymentReceipt
+
+        try:
+            creator = User.objects.get(pk=pk, role='creator')
+        except User.DoesNotExist:
+            return Response({"error": "Creator not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Amount comes from the request body (user-chosen)
+        amount_stx = int(request.data.get('amount_stx', 0))
+        amount_usdcx = int(request.data.get('amount_usdcx', 0))
+        amount_sbtc = int(request.data.get('amount_sbtc', 0))
+
+        if amount_stx <= 0 and amount_usdcx <= 0 and amount_sbtc <= 0:
+            return Response({"error": "Tip amount must be > 0"}, status=status.HTTP_400_BAD_REQUEST)
+
+        pay_to = getattr(creator, 'payout_stx_address', '') or creator.stacks_address or ''
+
+        def get_pay_to(req, **kw):
+            return pay_to
+
+        def get_amounts(req, **kw):
+            # Already in micro-units from the frontend
+            return amount_stx, amount_usdcx, amount_sbtc
+
+        @x402_required(get_pay_to, get_amounts, description=f"Tip for {creator.display_name or creator.username}", bypass_cache=True)
+        def gated_tip(req, *a, **kw):
+            return Response({
+                "status": "success",
+                "message": f"Tip sent to {creator.display_name or creator.username}!",
+                "creator_id": creator.id,
+                "tx_id": getattr(req, 'x402_tx_id', ''),
+            })
+
+        return gated_tip(request)
 

@@ -28,6 +28,29 @@ class TagViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering = ['name']
+    lookup_field = 'slug'
+
+    def get_object(self):
+        """Support lookup by slug or numeric ID fallback"""
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field) or self.kwargs.get('pk')
+        
+        if not lookup_value:
+            from django.http import Http404
+            raise Http404("No lookup value provided")
+
+        from django.db.models import Q
+        if str(lookup_value).isdigit():
+            obj = queryset.filter(Q(slug=lookup_value) | Q(pk=int(lookup_value))).first()
+        else:
+            obj = queryset.filter(slug=lookup_value).first()
+            
+        if obj is None:
+            from django.http import Http404
+            raise Http404("Tag not found")
+            
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class ShowViewSet(viewsets.ModelViewSet):
@@ -108,6 +131,28 @@ class ShowViewSet(viewsets.ModelViewSet):
         
         return queryset.distinct()  # Avoid duplicates from tag filtering
     
+    def get_object(self):
+        """Support lookup by slug or numeric ID fallback"""
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field) or self.kwargs.get('pk')
+        
+        if not lookup_value:
+            from django.http import Http404
+            raise Http404("No lookup value provided")
+
+        # Try slug lookup first, then fall back to numeric ID
+        if str(lookup_value).isdigit():
+            obj = queryset.filter(Q(slug=lookup_value) | Q(pk=int(lookup_value))).first()
+        else:
+            obj = queryset.filter(slug=lookup_value).first()
+            
+        if obj is None:
+            from django.http import Http404
+            raise Http404("Show not found")
+            
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def get_serializer(self, *args, **kwargs):
         """Inject request context for proper image URL generation"""
         kwargs.setdefault('context', self.get_serializer_context())
@@ -225,6 +270,14 @@ class ShowViewSet(viewsets.ModelViewSet):
                 {'error': 'Not a recurring show'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=True, methods=['get'], permission_classes=[])
+    def episodes(self, request, slug=None):
+        """Get all episodes for a specific show"""
+        show = self.get_object()
+        episodes = show.episodes.all().order_by('-air_date', '-episode_number')
+        serializer = ShowEpisodeSerializer(episodes, many=True, context={'request': request})
+        return Response(serializer.data)
         
         # Calculate next 30 days of instances
         instances = []
@@ -287,6 +340,35 @@ class ShowEpisodeViewSet(viewsets.ModelViewSet):
         if show.creator != self.request.user:
             raise PermissionError("You can only create episodes for your own shows.")
         serializer.save()
+
+    def retrieve(self, request, *args, **kwargs):
+        from payments.decorators import x402_required
+        from django.conf import settings
+        
+        instance = self.get_object()
+        
+        if instance.is_premium:
+            def get_pay_to(req, **kw):
+                return instance.show.creator.stacks_address or getattr(settings, 'PLATFORM_WALLET_ADDRESS', 'SP...')
+            
+            def get_amounts(req, **kw):
+                # Convert from human-readable to micro-units (STX, USDCx, sBTC)
+                sbtc_per_usdcx = 0.000015
+                return (
+                    int(float(instance.price_stx) * 1_000_000),
+                    int(float(instance.price_usdcx) * 1_000_000),
+                    int(float(instance.price_usdcx) * sbtc_per_usdcx * 100_000_000),
+                )
+
+            @x402_required(get_pay_to, get_amounts, description=f"Unlock Episode: {instance.title}")
+            def gated_retrieve(req, *a, **kw):
+                serializer = self.get_serializer(instance)
+                return Response(serializer.data)
+            
+            return gated_retrieve(request, *args, **kwargs)
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
 
 class GuestRequestViewSet(viewsets.ModelViewSet):

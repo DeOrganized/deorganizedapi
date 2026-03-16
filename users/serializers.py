@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Like, Comment, Follow, Notification
+from .models import Like, Comment, Follow, Notification, RTMPDestination, Subscription
 from django.contrib.contenttypes.models import ContentType
 
 User = get_user_model()
@@ -404,3 +404,47 @@ class NotificationSerializer(serializers.ModelSerializer):
             except Exception:
                 pass
         return None
+
+
+class RTMPDestinationSerializer(serializers.ModelSerializer):
+    stream_key_masked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RTMPDestination
+        fields = [
+            'id', 'platform', 'stream_key', 'stream_key_masked',
+            'rtmp_url', 'label', 'is_active', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'stream_key': {'write_only': True},  # never return raw key
+        }
+
+    def get_stream_key_masked(self, obj):
+        """Return masked stream key — show only last 4 characters."""
+        if obj.stream_key and len(obj.stream_key) > 4:
+            return '•' * (len(obj.stream_key) - 4) + obj.stream_key[-4:]
+        return '••••'
+
+
+class BroadcastScheduleSerializer(serializers.Serializer):
+    """Serializer for updating a creator's broadcast schedule."""
+    broadcast_time = serializers.TimeField(required=False, allow_null=True)
+    broadcast_days = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6),
+        required=False, allow_empty=True
+    )
+    broadcast_timezone = serializers.CharField(max_length=50, required=False)
+
+
+class SubscriptionSerializer(serializers.ModelSerializer):
+    is_active = serializers.BooleanField(read_only=True)
+    plan_display = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Subscription
+        fields = [
+            'id', 'plan', 'plan_display', 'status', 'is_active',
+            'started_at', 'expires_at', 'stx_address', 'stx_tx_id'
+        ]
+        read_only_fields = ['id', 'started_at', 'is_active', 'plan_display']

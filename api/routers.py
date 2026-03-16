@@ -2,7 +2,7 @@ from rest_framework import routers
 from shows.views import ShowViewSet, ShowEpisodeViewSet, TagViewSet, GuestRequestViewSet
 from news.views import NewsViewSet
 from events.views import EventViewSet
-from users.views import UserViewSet, LikeViewSet, CommentViewSet, FollowViewSet, NotificationViewSet
+from users.views import UserViewSet, LikeViewSet, CommentViewSet, FollowViewSet, NotificationViewSet, RTMPDestinationViewSet, BroadcastScheduleViewSet, SubscriptionViewSet, TipViewSet
 from users.wallet_auth import WalletAuthViewSet
 from api.views import FeedbackViewSet
 from posts.views import PostViewSet
@@ -28,6 +28,18 @@ router.register(r'feedback', FeedbackViewSet, basename='feedback')
 
 # Posts / Feed
 router.register(r'posts', PostViewSet, basename='post')
+
+# RTMP Destinations
+router.register(r'rtmp-destinations', RTMPDestinationViewSet, basename='rtmp-destination')
+
+# Broadcast Schedule
+router.register(r'broadcast-schedule', BroadcastScheduleViewSet, basename='broadcast-schedule')
+
+# Subscription
+router.register(r'subscription', SubscriptionViewSet, basename='subscription')
+
+# Tips
+router.register(r'tips', TipViewSet, basename='tip')
 
 # Wallet Authentication
 router.register(r'auth/wallet', WalletAuthViewSet, basename='wallet-auth')

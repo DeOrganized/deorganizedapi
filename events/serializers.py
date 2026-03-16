@@ -27,7 +27,7 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            'id', 'title', 'description', 'banner_image',
+            'id', 'slug', 'title', 'description', 'banner_image',
             'organizer', 'start_datetime', 'end_datetime',
             'venue_name', 'address', 'is_virtual', 'meeting_link',
             'capacity', 'registration_link', 'registration_deadline',
@@ -87,7 +87,7 @@ class EventListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            'id', 'title', 'banner_image', 'organizer',
+            'id', 'slug', 'title', 'banner_image', 'organizer',
             'start_datetime', 'end_datetime', 'venue_name',
             'is_virtual', 'is_public',
             'is_recurring', 'recurrence_type', 'day_of_week', 'scheduled_time',

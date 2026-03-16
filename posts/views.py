@@ -5,6 +5,8 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from django.db.models import Count, Exists, OuterRef, Subquery
 from .models import Post
 from .serializers import PostSerializer, PostCreateSerializer
+from payments.decorators import x402_required
+from django.conf import settings
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -27,6 +29,32 @@ class PostViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update']:
             return PostCreateSerializer
         return PostSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        if instance.is_premium:
+            def get_pay_to(req, **kw):
+                return instance.author.stx_address or getattr(settings, 'PLATFORM_WALLET_ADDRESS', 'SP...')
+            
+            def get_amounts(req, **kw):
+                # (STX, USDCx, sBTC) — sBTC derived from USDCx at demo rate
+                sbtc_per_usdcx = 0.000015
+                return (
+                    instance.price_stx,
+                    instance.price_usdcx,
+                    int(float(instance.price_usdcx) * sbtc_per_usdcx * 100_000_000),
+                )
+
+            @x402_required(get_pay_to, get_amounts, description=f"Unlock Post by {instance.author.username}")
+            def gated_retrieve(req, *a, **kw):
+                serializer = self.get_serializer(instance)
+                return Response(serializer.data)
+            
+            return gated_retrieve(request, *args, **kwargs)
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     def get_queryset(self):
         from users.models import Like

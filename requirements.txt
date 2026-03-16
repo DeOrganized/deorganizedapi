@@ -16,3 +16,6 @@ dj-database-url==2.2.0  # For parsing DATABASE_URL
 
 # Optional but recommended
 python-dotenv==1.0.0  # For loading environment variables from .env file
+requests==2.32.3  # For DCPE proxy HTTP calls
+celery==5.4.0
+redis==5.0.1

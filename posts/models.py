@@ -18,6 +18,11 @@ class Post(models.Model):
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
     is_pinned = models.BooleanField(default=False)
     
+    # Premium Gating
+    is_premium = models.BooleanField(default=False)
+    price_stx = models.BigIntegerField(default=0, help_text="Price in microSTX")
+    price_usdcx = models.BigIntegerField(default=0, help_text="Price in smallest USDCx unit")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

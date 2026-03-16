@@ -27,7 +27,9 @@ class ShowEpisodeSerializer(serializers.ModelSerializer):
         model = ShowEpisode
         fields = [
             'id', 'show', 'episode_number', 'title', 'description',
-            'air_date', 'duration', 'video_url', 'created_at'
+            'air_date', 'duration', 'video_url', 
+            'is_premium', 'price_stx', 'price_usdcx',
+            'created_at'
         ]
         read_only_fields = ['created_at']
 

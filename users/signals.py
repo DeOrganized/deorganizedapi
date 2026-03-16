@@ -24,65 +24,101 @@ def get_content_owner(content_object):
 
 @receiver(post_save, sender=Like)
 def create_like_notification(sender, instance, created, **kwargs):
-    """
-    Create notification when someone likes content.
-    Only creates notification if:
-    1. This is a new like (created=True)
-    2. The content object has an owner (creator/author/organizer)
-    3. The liker is not the owner (don't notify self-likes)
-    """
-    if not created:
-        return
-    
-    content_object = instance.content_object
-    owner = get_content_owner(content_object)
-    if owner is None:
-        return
-    
-    # Don't notify if user likes their own content
-    if instance.user == owner:
-        return
-    
-    Notification.objects.create(
-        recipient=owner,
-        actor=instance.user,
-        notification_type='like',
-        content_type=instance.content_type,
-        object_id=instance.object_id
-    )
+    """Create notification when someone likes content"""
+    if created:
+        try:
+            # Instance is the Like object
+            content_object = instance.content_object
+            if not content_object:
+                print(f"DEBUG: No content_object found for Like ID {instance.id}")
+                return
+
+            recipient = get_content_owner(content_object)
+            
+            # Don't notify if liking own content
+            if recipient and recipient != instance.user:
+                Notification.objects.create(
+                    recipient=recipient,
+                    actor=instance.user,
+                    notification_type='like',
+                    content_type=instance.content_type,
+                    object_id=instance.object_id
+                )
+        except Exception as e:
+            # Log error but don't crash the request
+            print(f"Error creating like notification: {str(e)}")
 
 
 @receiver(post_save, sender=Comment)
 def create_comment_notification(sender, instance, created, **kwargs):
-    """
-    Create notification when someone comments on content.
-    Only creates notification if:
-    1. This is a new comment (created=True)
-    2. The content object has an owner (creator/author/organizer)
-    3. The commenter is not the owner (don't notify self-comments)
-    4. This is a top-level comment (not a reply)
-    """
-    if not created:
-        return
-    
-    content_object = instance.content_object
-    owner = get_content_owner(content_object)
-    if owner is None:
-        return
-    
-    # Don't notify if user comments on their own content
-    if instance.user == owner:
-        return
-    
-    # Only notify on top-level comments (not replies)
-    if instance.parent is not None:
-        return
-    
-    Notification.objects.create(
-        recipient=owner,
-        actor=instance.user,
-        notification_type='comment',
-        content_type=instance.content_type,
-        object_id=instance.object_id
-    )
+    """Create notification when someone comments on content or replies to a comment"""
+    if created:
+        try:
+            # 1. Handle notification for replies
+            if instance.parent:
+                if instance.parent.user != instance.user:
+                    Notification.objects.create(
+                        recipient=instance.parent.user,
+                        actor=instance.user,
+                        notification_type='comment_reply',
+                        content_type=instance.content_type,
+                        object_id=instance.object_id
+                    )
+                return
 
+            # 2. Handle notification for top-level comments
+            content_object = instance.content_object
+            if not content_object:
+                print(f"DEBUG: No content_object found for Comment ID {instance.id}")
+                return
+
+            recipient = get_content_owner(content_object)
+            
+            # Don't notify if commenting on own content
+            if recipient and recipient != instance.user:
+                Notification.objects.create(
+                    recipient=recipient,
+                    actor=instance.user,
+                    notification_type='comment',
+                    content_type=instance.content_type,
+                    object_id=instance.object_id
+                )
+        except Exception as e:
+            # Log error but don't crash the request
+            print(f"Error creating comment notification: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Auto-create Subscription for every new user
+# ---------------------------------------------------------------------------
+
+@receiver(post_save, sender='users.User')
+def create_user_subscription(sender, instance, created, **kwargs):
+    """Auto-create a free Subscription when a new user is created."""
+    if created:
+        from .models import Subscription
+        Subscription.objects.get_or_create(
+            user=instance,
+            defaults={'plan': 'free', 'status': 'active'}
+        )
+
+
+# ---------------------------------------------------------------------------
+# Auto-create CreatorPlaylist when subscription upgrades to a paid plan
+# ---------------------------------------------------------------------------
+
+@receiver(post_save, sender='users.Subscription')
+def provision_creator_playlist(sender, instance, created, **kwargs):
+    """
+    Auto-create a CreatorPlaylist row when a subscription becomes paid/active.
+    This ensures the DCPE playlist ownership check passes for uploads and
+    playlist selection once DCPE's create-folder endpoint is live.
+    """
+    paid_plans = ('starter', 'pro', 'enterprise')
+    if instance.plan in paid_plans and instance.is_active:
+        from .models import CreatorPlaylist
+        folder_name = f"creator_{instance.user_id}_{instance.user.username}"
+        CreatorPlaylist.objects.get_or_create(
+            user=instance.user,
+            defaults={'dcpe_playlist_name': folder_name},
+        )
