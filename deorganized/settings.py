@@ -247,6 +247,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'shows.tasks.register_airing_episodes',
         'schedule': crontab(minute='*'),
     },
+    'auto-create-recurring-episodes-daily': {
+        'task': 'shows.tasks.auto_create_recurring_episodes',
+        'schedule': crontab(hour=0, minute=30),  # Run at 00:30 AM
+    },
     'auto-cancel-unconfirmed-shows-every-5-min': {
         'task': 'shows.tasks.auto_cancel_unconfirmed_shows',
         'schedule': crontab(minute='*/5'),
