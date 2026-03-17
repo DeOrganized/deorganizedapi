@@ -768,7 +768,7 @@ def social_balance(request):
     """GET /api/agent/social/balance/ — social agent DAP credit balance."""
     try:
         resp = http_requests.get(
-            f"{SOCIAL_BASE()}/api/dap/balance",
+            f"{SOCIAL_BASE()}/api/balance",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
@@ -783,7 +783,7 @@ def social_transactions(request):
     """GET /api/agent/social/transactions/ — social agent DAP transaction history."""
     try:
         resp = http_requests.get(
-            f"{SOCIAL_BASE()}/api/dap/transactions",
+            f"{SOCIAL_BASE()}/api/transactions",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
