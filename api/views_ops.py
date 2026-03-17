@@ -560,7 +560,7 @@ def dap_register(request):
     try:
         body = json.loads(request.body)
         resp = http_requests.post(
-            f"{DAP_BASE()}/api/register",
+            f"{DAP_BASE()}/api/users/register",
             json=body,
             headers=AGENT_HEADERS(),
             timeout=30,
