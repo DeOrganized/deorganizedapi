@@ -36,8 +36,8 @@ class UserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'profile_picture', 
-            'role', 'is_verified', 'is_staff', 'is_creator', 'follower_count', 'bio',
+            'id', 'username', 'profile_picture',
+            'role', 'is_verified', 'is_staff', 'is_active', 'is_creator', 'follower_count', 'bio',
             'stacks_address', 'date_joined'
         ]
         read_only_fields = fields

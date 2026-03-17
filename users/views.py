@@ -562,6 +562,48 @@ class UserViewSet(viewsets.ModelViewSet):
             'message': f'User {"verified" if user.is_verified else "unverified"} successfully'
         })
 
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdminUser], url_path='set-permissions')
+    def set_permissions(self, request, pk=None):
+        """
+        Set role, verification, staff, and active status for a user.
+        PATCH /api/users/{id}/set-permissions/
+        Staff only. Cannot modify your own account or superusers.
+        """
+        target = self.get_object()
+
+        if target == request.user:
+            return Response({'error': 'Cannot modify your own permissions'}, status=400)
+        if target.is_superuser:
+            return Response({'error': 'Cannot modify superuser accounts'}, status=403)
+
+        allowed = {'role', 'is_verified', 'is_staff', 'is_active'}
+        update_fields = []
+
+        if 'role' in request.data:
+            role = request.data['role']
+            if role not in ('user', 'creator'):
+                return Response({'error': 'role must be user or creator'}, status=400)
+            target.role = role
+            update_fields.append('role')
+
+        for field in ('is_verified', 'is_staff', 'is_active'):
+            if field in request.data:
+                setattr(target, field, bool(request.data[field]))
+                update_fields.append(field)
+
+        if not update_fields:
+            return Response({'error': 'No valid fields provided'}, status=400)
+
+        target.save(update_fields=update_fields)
+        return Response({
+            'id': target.id,
+            'username': target.username,
+            'role': target.role,
+            'is_verified': target.is_verified,
+            'is_staff': target.is_staff,
+            'is_active': target.is_active,
+        })
+
 
 class LikeViewSet(viewsets.ModelViewSet):
     """
