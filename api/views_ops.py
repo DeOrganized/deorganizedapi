@@ -655,11 +655,15 @@ def content_latest(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def content_history(request):
-    """GET /api/content/history/ — generated content history."""
+    """GET /api/content/history/ — generated content history. Forwards ?limit query param."""
     try:
+        params = {}
+        if request.GET.get('limit'):
+            params['limit'] = request.GET['limit']
         resp = http_requests.get(
             f"{AGENT_BASE()}/news/history",
             headers=AGENT_HEADERS(),
+            params=params,
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
