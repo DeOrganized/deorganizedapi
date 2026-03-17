@@ -37,7 +37,8 @@ RAILWAY_PROJECT_ID = lambda: os.environ.get('RAILWAY_PROJECT_ID', '')
 RAILWAY_SERVICE_ID = lambda: os.environ.get('RAILWAY_SERVICE_ID', '')
 RAILWAY_ENV_ID = lambda: os.environ.get('RAILWAY_ENV_ID', '')
 
-AGENT_BASE    = lambda: os.environ.get('AGENT_CONTROLLER_URL', '').rstrip('/')
+DAP_BASE      = lambda: os.environ.get('DAP_SERVICE_URL', '').rstrip('/')
+AGENT_BASE    = lambda: os.environ.get('AGENT_API_URL', '').rstrip('/')
 SOCIAL_BASE   = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
 AGENT_HEADERS = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
 
@@ -543,7 +544,7 @@ def dap_status(request):
     """GET /api/dap/status/ — DAP service status."""
     try:
         resp = http_requests.get(
-            f"{AGENT_BASE()}/api/dap/status",
+            f"{DAP_BASE()}/api/status",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
@@ -559,7 +560,7 @@ def dap_register(request):
     try:
         body = json.loads(request.body)
         resp = http_requests.post(
-            f"{AGENT_BASE()}/api/dap/register",
+            f"{DAP_BASE()}/api/register",
             json=body,
             headers=AGENT_HEADERS(),
             timeout=30,
@@ -575,7 +576,7 @@ def dap_balance(request, address):
     """GET /api/dap/balance/<address>/ — DAP credit balance for a Stacks address."""
     try:
         resp = http_requests.get(
-            f"{AGENT_BASE()}/api/dap/users/{address}/balance",
+            f"{DAP_BASE()}/api/users/{address}/balance",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
@@ -590,7 +591,7 @@ def dap_transactions(request, address):
     """GET /api/dap/transactions/<address>/ — DAP credit transaction history."""
     try:
         resp = http_requests.get(
-            f"{AGENT_BASE()}/api/dap/users/{address}/transactions",
+            f"{DAP_BASE()}/api/users/{address}/transactions",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
@@ -696,7 +697,7 @@ def agent_wallet(request):
     """GET /api/agent/wallet/ — Long Elio agent wallet balances."""
     try:
         resp = http_requests.get(
-            f"{AGENT_BASE()}/agent/wallet",
+            f"{AGENT_BASE()}/wallet",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
