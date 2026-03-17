@@ -716,7 +716,10 @@ def agent_wallet(request):
 def agent_chat(request):
     """POST /api/agent/chat/ — send a message to Long Elio and get a response."""
     try:
-        body = json.loads(request.body)
+        body = json.loads(request.body) if request.body else {}
+        user = request.user
+        body['userId'] = getattr(user, 'stacks_address', None) or user.username
+        body['userName'] = getattr(user, 'display_name', None) or user.username
         resp = http_requests.post(
             f"{AGENT_BASE()}/chat",
             json=body,
