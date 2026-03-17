@@ -37,10 +37,11 @@ RAILWAY_PROJECT_ID = lambda: os.environ.get('RAILWAY_PROJECT_ID', '')
 RAILWAY_SERVICE_ID = lambda: os.environ.get('RAILWAY_SERVICE_ID', '')
 RAILWAY_ENV_ID = lambda: os.environ.get('RAILWAY_ENV_ID', '')
 
-DAP_BASE      = lambda: os.environ.get('DAP_SERVICE_URL', '').rstrip('/')
-AGENT_BASE    = lambda: os.environ.get('AGENT_API_URL', '').rstrip('/')
-SOCIAL_BASE   = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
-AGENT_HEADERS = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
+DAP_BASE        = lambda: os.environ.get('DAP_SERVICE_URL', '').rstrip('/')
+AGENT_BASE      = lambda: os.environ.get('AGENT_API_URL', '').rstrip('/')
+CONTROLLER_BASE = lambda: os.environ.get('AGENT_CONTROLLER_URL', '').rstrip('/')
+SOCIAL_BASE     = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
+AGENT_HEADERS   = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
 
 
 def _proxy_error(exc, context="DCPE"):
@@ -611,7 +612,7 @@ def content_generate(request):
     try:
         body = json.loads(request.body)
         resp = http_requests.post(
-            f"{AGENT_BASE()}/api/dap/generate",
+            f"{CONTROLLER_BASE()}/api/generate",
             json=body,
             headers=AGENT_HEADERS(),
             timeout=30,
@@ -627,7 +628,7 @@ def content_status(request):
     """GET /api/content/status/ — content generation run status."""
     try:
         resp = http_requests.get(
-            f"{AGENT_BASE()}/news/status",
+            f"{AGENT_BASE()}/news/run-status",
             headers=AGENT_HEADERS(),
             timeout=30,
         )
