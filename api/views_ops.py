@@ -714,7 +714,7 @@ def agent_chat(request):
     try:
         body = json.loads(request.body)
         resp = http_requests.post(
-            f"{AGENT_BASE()}/agent/chat",
+            f"{AGENT_BASE()}/chat",
             json=body,
             headers=AGENT_HEADERS(),
             timeout=30,
