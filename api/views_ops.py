@@ -786,3 +786,55 @@ def social_transactions(request):
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="Social")
+
+
+# ---------------------------------------------------------------------------
+# Admin Content Generation Endpoints (no DAP credits — direct agent trigger)
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def content_generate_admin(request):
+    """
+    POST /api/content/generate-admin/ — admin-only direct trigger for news generation.
+    Bypasses DAP credits and goes directly to the agent's /news/run endpoint.
+    Body: { operatorPrompt?: string }
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        payload = {}
+        if body.get('operatorPrompt'):
+            payload['operator_prompt'] = body['operatorPrompt']
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/news/run",
+            json=payload,
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def content_generate_stacks(request):
+    """
+    POST /api/content/generate-stacks/ — admin-only direct trigger for Stacks package generation.
+    Bypasses DAP credits and goes directly to the agent's /news/run-stacks endpoint.
+    Body: { operatorPrompt?: string }
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        payload = {}
+        if body.get('operatorPrompt'):
+            payload['operator_prompt'] = body['operatorPrompt']
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/news/run-stacks",
+            json=payload,
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
