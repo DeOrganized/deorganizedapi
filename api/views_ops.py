@@ -802,13 +802,15 @@ def content_generate_admin(request):
     """
     POST /api/content/generate-admin/ — admin-only direct trigger for news generation.
     Bypasses DAP credits and goes directly to the agent's /news/run endpoint.
-    Body: { operatorPrompt?: string }
+    Body: { operatorPrompt?: string, additionalLinks?: string[] }
     """
     try:
         body = json.loads(request.body) if request.body else {}
         payload = {}
         if body.get('operatorPrompt'):
-            payload['operator_prompt'] = body['operatorPrompt']
+            payload['operatorPrompt'] = body['operatorPrompt']
+        if body.get('additionalLinks'):
+            payload['additionalLinks'] = body['additionalLinks']
         resp = http_requests.post(
             f"{AGENT_BASE()}/news/run",
             json=payload,
@@ -826,13 +828,15 @@ def content_generate_stacks(request):
     """
     POST /api/content/generate-stacks/ — admin-only direct trigger for Stacks package generation.
     Bypasses DAP credits and goes directly to the agent's /news/run-stacks endpoint.
-    Body: { operatorPrompt?: string }
+    Body: { operatorPrompt?: string, additionalLinks?: string[] }
     """
     try:
         body = json.loads(request.body) if request.body else {}
         payload = {}
         if body.get('operatorPrompt'):
-            payload['operator_prompt'] = body['operatorPrompt']
+            payload['operatorPrompt'] = body['operatorPrompt']
+        if body.get('additionalLinks'):
+            payload['additionalLinks'] = body['additionalLinks']
         resp = http_requests.post(
             f"{AGENT_BASE()}/news/run-stacks",
             json=payload,
