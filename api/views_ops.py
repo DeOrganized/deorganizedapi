@@ -666,7 +666,7 @@ def content_history(request):
             params=params,
             timeout=30,
         )
-        return JsonResponse(resp.json(), status=resp.status_code)
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="Agent")
 
