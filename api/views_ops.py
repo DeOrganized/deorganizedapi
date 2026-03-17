@@ -37,6 +37,10 @@ RAILWAY_PROJECT_ID = lambda: os.environ.get('RAILWAY_PROJECT_ID', '')
 RAILWAY_SERVICE_ID = lambda: os.environ.get('RAILWAY_SERVICE_ID', '')
 RAILWAY_ENV_ID = lambda: os.environ.get('RAILWAY_ENV_ID', '')
 
+AGENT_BASE    = lambda: os.environ.get('AGENT_CONTROLLER_URL', '').rstrip('/')
+SOCIAL_BASE   = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
+AGENT_HEADERS = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
+
 
 def _proxy_error(exc, context="DCPE"):
     """Return a consistent error JsonResponse for proxy failures."""
@@ -527,3 +531,256 @@ def ops_upload(request):
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="Upload")
+
+
+# ---------------------------------------------------------------------------
+# DAP Credit Service Endpoints
+# ---------------------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dap_status(request):
+    """GET /api/dap/status/ — DAP service status."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/api/dap/status",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dap_register(request):
+    """POST /api/dap/register/ — register a Stacks address with the DAP credit system."""
+    try:
+        body = json.loads(request.body)
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/api/dap/register",
+            json=body,
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dap_balance(request, address):
+    """GET /api/dap/balance/<address>/ — DAP credit balance for a Stacks address."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/api/dap/users/{address}/balance",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dap_transactions(request, address):
+    """GET /api/dap/transactions/<address>/ — DAP credit transaction history."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/api/dap/users/{address}/transactions",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
+
+
+# ---------------------------------------------------------------------------
+# Content Generation Endpoints
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def content_generate(request):
+    """POST /api/content/generate/ — trigger content generation via the agent controller."""
+    try:
+        body = json.loads(request.body)
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/api/dap/generate",
+            json=body,
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def content_status(request):
+    """GET /api/content/status/ — content generation run status."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/news/status",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def content_latest(request):
+    """GET /api/content/latest/ — latest generated content package."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/news/latest",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def content_history(request):
+    """GET /api/content/history/ — generated content history."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/news/history",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def content_thumbnail(request, date, format):
+    """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use."""
+    from django.http import HttpResponse
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/news/thumbnail/{date}/{format}",
+            params={"key": os.environ.get('AGENT_API_KEY', '')},
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return HttpResponse(
+            resp.content,
+            content_type=resp.headers.get('content-type', 'image/png'),
+            status=resp.status_code,
+        )
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+# ---------------------------------------------------------------------------
+# Long Elio Agent Endpoints
+# ---------------------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def agent_wallet(request):
+    """GET /api/agent/wallet/ — Long Elio agent wallet balances."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/agent/wallet",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def agent_chat(request):
+    """POST /api/agent/chat/ — send a message to Long Elio and get a response."""
+    try:
+        body = json.loads(request.body)
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/agent/chat",
+            json=body,
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+# ---------------------------------------------------------------------------
+# Social Agent Endpoints
+# ---------------------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def social_wallet(request):
+    """GET /api/agent/social/wallet/ — social agent wallet balances (STX, sBTC, USDCx)."""
+    try:
+        resp = http_requests.get(
+            f"{SOCIAL_BASE()}/api/wallet",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def social_status(request):
+    """GET /api/agent/social/status/ — social agent full state and credit balance."""
+    try:
+        resp = http_requests.get(
+            f"{SOCIAL_BASE()}/api/status",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def social_balance(request):
+    """GET /api/agent/social/balance/ — social agent DAP credit balance."""
+    try:
+        resp = http_requests.get(
+            f"{SOCIAL_BASE()}/api/dap/balance",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def social_transactions(request):
+    """GET /api/agent/social/transactions/ — social agent DAP transaction history."""
+    try:
+        resp = http_requests.get(
+            f"{SOCIAL_BASE()}/api/dap/transactions",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")

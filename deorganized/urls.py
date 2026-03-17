@@ -35,6 +35,9 @@ urlpatterns = [
     
     # DCPE Operations proxy endpoints
     path('ops/', include('api.urls_ops')),
+
+    # DAP, content generation, agent, and social agent proxy endpoints
+    path('api/', include('api.urls_content')),
     
     # JWT Authentication
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
