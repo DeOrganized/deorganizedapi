@@ -324,12 +324,13 @@ def _parse_stacks_connect_signature(signature: str) -> Optional[dict]:
                 }
 
             # RSV format — newer Leather wallet request() API
-            # Last byte hints at recovery_id, but try all to be safe.
+            # Last byte is the recovery ID (0 or 1 for compressed keys).
+            # Use it directly; do NOT fall back to try-all, which picks the wrong key.
             if last_byte in (0, 1, 2, 3):
-                print(f"   RSV format hint — last byte {last_byte}, trying all recovery IDs")
+                print(f"   RSV format — last byte {last_byte} is recovery_id, using directly")
                 return {
                     'signature': sig_bytes[:64],  # 64 bytes r+s
-                    'recovery_id': None,  # try all
+                    'recovery_id': last_byte,
                 }
 
             # Unknown — strip first byte and try all recovery IDs
