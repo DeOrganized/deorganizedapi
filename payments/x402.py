@@ -18,7 +18,7 @@ def build_payment_required_header(pay_to: str, amount_stx: int, amount_usdcx: in
         "resource": resource,
         "description": description,
         "tokenTypes": ["STX", "USDCx", "sBTC"],
-        "network": os.environ.get("STACKS_NETWORK", "testnet"),
+        "network": os.environ.get("STACKS_NETWORK", "mainnet"),
         "nonce": str(uuid.uuid4()),
         "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
     }
