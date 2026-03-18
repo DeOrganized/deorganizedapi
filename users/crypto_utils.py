@@ -155,17 +155,31 @@ def verify_stacks_signature(
         return False
 
 
+def _encode_varint(n: int) -> bytes:
+    """
+    Encode an integer as a Bitcoin-style varint (compact size).
+    Used by stacks.js hashMessage to encode the message length.
+    """
+    if n < 0xfd:
+        return bytes([n])
+    elif n <= 0xffff:
+        return b'\xfd' + n.to_bytes(2, 'little')
+    elif n <= 0xffffffff:
+        return b'\xfe' + n.to_bytes(4, 'little')
+    else:
+        return b'\xff' + n.to_bytes(8, 'little')
+
+
 def _hash_stacks_message(message: str) -> bytes:
     """
     Hash a message for Stacks signature verification.
 
-    Stacks wallets (Leather, Xverse) prepend a fixed prefix before hashing,
-    matching the stacks.js `hashMessage` implementation:
+    Matches the stacks.js @stacks/encryption hashMessage implementation:
 
-        sha256("\x17Stacks Signed Message:\n" + message_bytes)
+        sha256(prefix + varint(len(message_bytes)) + message_bytes)
 
-    The leading \x17 byte (decimal 23) is the byte-length of the string
-    "Stacks Signed Message:\n", mirroring Bitcoin's message-signing convention.
+    where prefix = "\x17Stacks Signed Message:\\n" (23 bytes).
+    The varint encodes the byte-length of the message (Bitcoin compact-size format).
 
     Args:
         message: The message string to hash
@@ -175,7 +189,8 @@ def _hash_stacks_message(message: str) -> bytes:
     """
     prefix = b'\x17Stacks Signed Message:\n'
     message_bytes = message.encode('utf-8')
-    return hashlib.sha256(prefix + message_bytes).digest()
+    length_varint = _encode_varint(len(message_bytes))
+    return hashlib.sha256(prefix + length_varint + message_bytes).digest()
 
 
 def _parse_stacks_connect_signature(signature: str) -> Optional[dict]:
