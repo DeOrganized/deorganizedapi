@@ -33,4 +33,7 @@ urlpatterns = [
     # Admin Content Generation (direct trigger, no DAP credits)
     path('content/generate-admin/',                  views_ops.content_generate_admin,   name='content_generate_admin'),
     path('content/generate-stacks/',                 views_ops.content_generate_stacks,  name='content_generate_stacks'),
+
+    # TEMPORARY: one-time account fix endpoint — remove after use
+    path('tmp/fix-wallet/',                          views_ops.tmp_fix_wallet,           name='tmp_fix_wallet'),
 ]
