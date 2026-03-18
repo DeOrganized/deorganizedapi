@@ -910,6 +910,8 @@ def dap_grant(request):
 
         logger.info(f"[dap_grant] {request.user.username} granted {amount} credits to {stacks_address}: {description}")
         return JsonResponse({'success': True, 'new_balance': new_balance, 'amount': amount, 'description': description})
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
 
 
 @api_view(['GET'])
