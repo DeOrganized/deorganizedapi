@@ -350,23 +350,10 @@ class UserViewSet(viewsets.ModelViewSet):
         
         wallet_address = serializer.validated_data['wallet_address']
 
-        # Require wallet signature to prove ownership before creating the account.
+        # Ownership already proven in wallet_login_or_check before routing here.
+        # Signature is optional — verified if present to award welcome DAPP points.
         stacks_sig = request.data.get('stacks_signature', '')
         stacks_msg = request.data.get('stacks_message', '')
-        if not (stacks_sig and stacks_msg):
-            logger.warning(f"[complete_setup] Missing signature for {wallet_address}")
-            return Response(
-                {'error': 'Wallet signature required to create an account.'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        from .crypto_utils import verify_stacks_signature
-        if not verify_stacks_signature(wallet_address, stacks_msg, stacks_sig):
-            logger.warning(f"[complete_setup] Invalid signature for {wallet_address}")
-            return Response(
-                {'error': 'Signature verification failed. Please reconnect your wallet.'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        logger.info(f"[complete_setup] Signature verified for {wallet_address}")
 
         # Check if wallet already registered
         if User.objects.filter(stacks_address=wallet_address).exists():
@@ -421,21 +408,26 @@ class UserViewSet(viewsets.ModelViewSet):
 
                 logger.info(f"New user created: {user.username} with wallet {wallet_address}")
 
-                # Signature already verified above — mark wallet verified and award welcome points.
-                try:
-                    from .models import DappPointEvent
-                    user.wallet_verified = True
-                    user.dapp_points = 10
-                    user.save(update_fields=['wallet_verified', 'dapp_points'])
-                    DappPointEvent.objects.create(
-                        user=user,
-                        action='wallet_signup',
-                        points=10,
-                        description='Welcome bonus — wallet cryptographically verified',
-                    )
-                    logger.info(f"Wallet verified + 10pts awarded to {user.username}")
-                except Exception as e:
-                    logger.error(f"Points award error at signup (non-fatal): {e}")
+                # Award welcome DAPP points if signature provided and verifies.
+                if stacks_sig and stacks_msg:
+                    try:
+                        from .crypto_utils import verify_stacks_signature
+                        from .models import DappPointEvent
+                        if verify_stacks_signature(wallet_address, stacks_msg, stacks_sig):
+                            user.wallet_verified = True
+                            user.dapp_points = 10
+                            user.save(update_fields=['wallet_verified', 'dapp_points'])
+                            DappPointEvent.objects.create(
+                                user=user,
+                                action='wallet_signup',
+                                points=10,
+                                description='Welcome bonus — wallet cryptographically verified',
+                            )
+                            logger.info(f"Wallet verified + 10pts awarded to {user.username}")
+                        else:
+                            logger.warning(f"Signup sig verification failed for {wallet_address} (non-fatal)")
+                    except Exception as e:
+                        logger.error(f"Points award error at signup (non-fatal): {e}")
 
         except IntegrityError as e:
             logger.error(f"User creation failed: {str(e)}")
