@@ -26,6 +26,9 @@ urlpatterns = [
     path('create-folder/', views_ops.ops_create_folder, name='create_folder'),
     path('upload/', views_ops.ops_upload, name='upload'),
 
+    # Admin DCPE emergency control
+    path('admin/dcpe/kill/',                   views_ops.admin_dcpe_kill,            name='admin_dcpe_kill'),
+
     # Creator Studio DCPE endpoints (authenticated creator + active subscription)
     path('dcpe/upload/',                       views_ops.dcpe_creator_upload,        name='dcpe_creator_upload'),
     path('dcpe/prep/',                         views_ops.dcpe_creator_prep,          name='dcpe_creator_prep'),

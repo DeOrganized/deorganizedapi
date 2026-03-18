@@ -33,6 +33,11 @@ DAP_REWARDS = {
         'description': 'Followed PeaceLoveMusic',
         'one_time': True,
     },
+    'creator_upgrade': {
+        'amount': 1000,
+        'description': 'Creator upgrade bonus',
+        'one_time': True,
+    },
 }
 
 # ---------------------------------------------------------------------------

@@ -702,6 +702,7 @@ class UserViewSet(viewsets.ModelViewSet):
         allowed = {'role', 'is_verified', 'is_staff', 'is_active'}
         update_fields = []
 
+        prev_role = target.role
         if 'role' in request.data:
             role = request.data['role']
             if role not in ('user', 'creator'):
@@ -718,6 +719,16 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No valid fields provided'}, status=400)
 
         target.save(update_fields=update_fields)
+
+        # Fire DAP creator upgrade reward if role was just upgraded to creator
+        if prev_role != 'creator' and target.role == 'creator':
+            try:
+                import logging as _logging
+                from .dap_rewards import issue_dap_reward
+                issue_dap_reward(target, 'creator_upgrade', _logging.getLogger(__name__))
+            except Exception as e:
+                pass  # non-fatal
+
         return Response({
             'id': target.id,
             'username': target.username,

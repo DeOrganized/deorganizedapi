@@ -14,6 +14,7 @@ from functools import wraps
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from django.core.cache import cache
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 DCPE_BASE = lambda: os.environ.get('DCPE_BASE_URL', '').rstrip('/')
 DCPE_HEADERS = lambda: {"Authorization": f"Bearer {os.environ.get('DCPE_API_KEY', '')}"}
+
+# Session key for tracking which creator currently owns the DCPE stream
+DCPE_SESSION_KEY = 'dcpe_creator_session'
+DCPE_SESSION_TTL = 6 * 3600  # 6 hours
 
 RAILWAY_GQL = "https://backboard.railway.app/graphql/v2"
 RAILWAY_HEADERS = lambda: {
@@ -476,13 +481,27 @@ def dcpe_creator_set_playlist(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def dcpe_creator_stream_start(request):
-    """POST /ops/dcpe/stream-start/ — start RTMP stream from creator session."""
+    """POST /ops/dcpe/stream-start/ — start RTMP stream from creator session.
+    Returns 409 if another creator already owns the active session.
+    """
+    session = cache.get(DCPE_SESSION_KEY)
+    if session and session.get('user_id') != request.user.id:
+        return JsonResponse({
+            'error': 'Stream is currently in use by another creator',
+            'session_owner_username': session.get('username'),
+        }, status=409)
+
     try:
         resp = http_requests.post(
             f"{DCPE_BASE()}/api/stream-start/",
             headers=DCPE_HEADERS(),
             timeout=10,
         )
+        if resp.ok:
+            cache.set(DCPE_SESSION_KEY, {
+                'user_id': request.user.id,
+                'username': request.user.username,
+            }, DCPE_SESSION_TTL)
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="DCPE Stream Start")
@@ -491,29 +510,69 @@ def dcpe_creator_stream_start(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def dcpe_creator_stream_stop(request):
-    """POST /ops/dcpe/stream-stop/ — stop RTMP stream."""
+    """POST /ops/dcpe/stream-stop/ — stop RTMP stream.
+    Returns 403 if the caller does not own the active session.
+    """
+    session = cache.get(DCPE_SESSION_KEY)
+    if session and session.get('user_id') != request.user.id:
+        return JsonResponse({
+            'error': 'You cannot stop a stream started by another creator',
+            'session_owner_username': session.get('username'),
+        }, status=403)
+
     try:
         resp = http_requests.post(
             f"{DCPE_BASE()}/api/stream-stop/",
             headers=DCPE_HEADERS(),
             timeout=10,
         )
+        if resp.ok:
+            cache.delete(DCPE_SESSION_KEY)
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="DCPE Stream Stop")
 
 
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def admin_dcpe_kill(request):
+    """
+    POST /ops/admin/dcpe/kill/ — emergency stream shutoff, admin-only.
+    Stops the DCPE stream immediately regardless of session ownership and clears the session lock.
+    """
+    try:
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/stream-stop/",
+            headers=DCPE_HEADERS(),
+            timeout=10,
+        )
+        cache.delete(DCPE_SESSION_KEY)
+        data = resp.json() if resp.ok else {'status': 'stop_sent'}
+        data['session_cleared'] = True
+        data['killed_by'] = request.user.username
+        logger.warning(f"[admin_dcpe_kill] Emergency kill by {request.user.username}")
+        return JsonResponse(data, status=200)
+    except Exception as exc:
+        # Even if DCPE call fails, clear the session lock
+        cache.delete(DCPE_SESSION_KEY)
+        return _proxy_error(exc, context="DCPE Admin Kill")
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dcpe_creator_status(request):
-    """GET /ops/dcpe/status/ — DCPE stream and engine status."""
+    """GET /ops/dcpe/status/ — DCPE stream and engine status, including session owner."""
     try:
         resp = http_requests.get(
             f"{DCPE_BASE()}/api/status/",
             headers=DCPE_HEADERS(),
             timeout=10,
         )
-        return JsonResponse(resp.json(), status=resp.status_code)
+        data = resp.json()
+        session = cache.get(DCPE_SESSION_KEY)
+        data['session_owner_id'] = session['user_id'] if session else None
+        data['session_owner_username'] = session['username'] if session else None
+        return JsonResponse(data, status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="DCPE Status")
 
