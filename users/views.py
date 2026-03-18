@@ -278,19 +278,21 @@ class UserViewSet(viewsets.ModelViewSet):
         message   = request.data.get('message', '')
         signature = request.data.get('signature', '')
 
-        # Verify signature when provided. Grace period active while address
-        # mismatch is diagnosed — will re-harden once confirmed working.
-        if signature and message:
-            from .crypto_utils import verify_stacks_signature
-            if not verify_stacks_signature(wallet_address, message, signature):
-                logger.warning(f"[wallet_login] Invalid signature for {wallet_address}")
-                return Response(
-                    {'error': 'Signature verification failed. Please reconnect your wallet.'},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-            logger.info(f"[wallet_login] Signature verified for {wallet_address}")
-        else:
-            logger.warning(f"[wallet_login] No signature for {wallet_address} — grace period active")
+        if not signature or not message:
+            logger.warning(f"[wallet_login] Missing signature or message for {wallet_address}")
+            return Response(
+                {'error': 'Wallet signature required. Please reconnect your wallet.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        from .crypto_utils import verify_stacks_signature
+        if not verify_stacks_signature(wallet_address, message, signature):
+            logger.warning(f"[wallet_login] Invalid signature for {wallet_address}")
+            return Response(
+                {'error': 'Signature verification failed. Please reconnect your wallet.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        logger.info(f"[wallet_login] Signature verified for {wallet_address}")
 
         matching_users = User.objects.filter(stacks_address=wallet_address).order_by('date_joined')
         if matching_users.exists():
