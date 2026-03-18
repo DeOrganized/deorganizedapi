@@ -354,7 +354,6 @@ def ops_stream_stop(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_upload(request):
     """
     POST /ops/dcpe/upload/ — session-based file upload for Creator Studio.
@@ -383,7 +382,6 @@ def dcpe_creator_upload(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_prep(request):
     """
     POST /ops/dcpe/prep/ — kick off normalization pipeline for uploaded file_ids.
@@ -404,7 +402,6 @@ def dcpe_creator_prep(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_prep_status(request, prep_id):
     """
     GET /ops/dcpe/prep-status/<prep_id>/ — per-file normalization progress.
@@ -422,7 +419,6 @@ def dcpe_creator_prep_status(request, prep_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_set_playlist(request):
     """
     POST /ops/dcpe/set-playlist/ — set DCPE playlist to creator's prepped folder.
@@ -443,7 +439,6 @@ def dcpe_creator_set_playlist(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_stream_start(request):
     """POST /ops/dcpe/stream-start/ — start RTMP stream from creator session."""
     try:
@@ -459,7 +454,6 @@ def dcpe_creator_stream_start(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_stream_stop(request):
     """POST /ops/dcpe/stream-stop/ — stop RTMP stream."""
     try:
@@ -475,7 +469,6 @@ def dcpe_creator_stream_stop(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@require_active_subscription
 def dcpe_creator_status(request):
     """GET /ops/dcpe/status/ — DCPE stream and engine status."""
     try:
