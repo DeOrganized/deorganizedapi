@@ -206,30 +206,44 @@ def _parse_stacks_connect_signature(signature: str) -> Optional[dict]:
             print(f"❌ Failed to decode hex: {e}")
             return None
         
-        # Stacks signatures are 65 bytes in VRS format.
-        # The first byte encodes the recovery ID:
-        #   Leather / stacks.js compressed key: recovery_id = first_byte - 31
-        #   i.e. 0x1f (31) → recovery_id 0, 0x20 (32) → recovery_id 1
-        # We decode it when it's in the expected range; otherwise fall back to
-        # trying all recovery IDs (0-3).
+        # Stacks signatures are 65 bytes. Two formats are seen in the wild:
+        #
+        # VRS (classic stacks.js): first byte encodes recovery ID
+        #   0x1f (31) → recid 0, 0x20 (32) → recid 1 (compressed key)
+        #
+        # RSV (newer Leather request() API): r+s in bytes 0-63, recid in byte 64
+        #   byte 64 is 0 or 1; byte 0 is the start of R (any value)
         if len(sig_bytes) == 65:
             first_byte = sig_bytes[0]
-            r_s_bytes = sig_bytes[1:]  # 64 bytes r+s
+            last_byte  = sig_bytes[64]
 
             print(f"✅ 65-byte signature detected")
-            print(f"   First byte: {first_byte} (0x{first_byte:02x})")
+            print(f"   First byte: {first_byte} (0x{first_byte:02x}), Last byte: {last_byte} (0x{last_byte:02x})")
 
-            # Compressed key convention: 31 = recid 0, 32 = recid 1
+            # VRS format — standard stacks.js compressed key convention
             if first_byte in (31, 32):
                 recovery_id = first_byte - 31
-                print(f"   Decoded recovery_id: {recovery_id} (compressed key)")
-            else:
-                recovery_id = None  # Try all
-                print(f"   Non-standard first byte — will try all recovery IDs (0-3)")
+                print(f"   VRS format — recovery_id: {recovery_id}")
+                return {
+                    'signature': sig_bytes[1:],   # 64 bytes r+s
+                    'recovery_id': recovery_id,
+                }
 
+            # RSV format — newer Leather wallet request() API
+            # last byte is the raw recovery ID (0 or 1)
+            if last_byte in (0, 1, 2, 3):
+                recovery_id = int(last_byte)
+                print(f"   RSV format — recovery_id: {recovery_id} (last byte)")
+                return {
+                    'signature': sig_bytes[:64],  # 64 bytes r+s
+                    'recovery_id': recovery_id,
+                }
+
+            # Unknown — strip first byte and try all recovery IDs
+            print(f"   Unknown format — will try all recovery IDs (0-3)")
             return {
-                'signature': r_s_bytes,
-                'recovery_id': recovery_id,
+                'signature': sig_bytes[1:],
+                'recovery_id': None,
             }
         
         # Check for raw RS format (64 bytes) - less common
