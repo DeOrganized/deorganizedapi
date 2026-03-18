@@ -310,6 +310,15 @@ class UserViewSet(viewsets.ModelViewSet):
                 logger.warning(f"[wallet_login] Removing {len(dup_ids)} duplicate(s) for {wallet_address}: {dup_ids}")
                 duplicates.delete()
 
+            logger.info(
+                f"[wallet_login] user={user.username} stored_signing_address={user.signing_address!r} "
+                f"recovered={recovered!r} match={user.signing_address == recovered}"
+            )
+            print(
+                f"[wallet_login] user={user.username} stored_signing_address={user.signing_address!r} "
+                f"recovered={recovered!r} match={user.signing_address == recovered}"
+            )
+
             # Verify or bind the signing address
             if user.signing_address:
                 if user.signing_address != recovered:

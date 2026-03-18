@@ -184,6 +184,23 @@ def recover_signing_address(message: str, signature: str) -> Optional[str]:
     import logging
     logger = logging.getLogger(__name__)
     try:
+        # Log raw signature bytes for debugging
+        raw_sig = signature[2:] if signature.startswith(('0x', '0X')) else signature
+        try:
+            raw_bytes = bytes.fromhex(raw_sig)
+            logger.info(
+                f"[signing] raw sig: len={len(raw_bytes)}B "
+                f"first4={raw_bytes[:4].hex()} last4={raw_bytes[-4:].hex()} "
+                f"byte0={raw_bytes[0]}(0x{raw_bytes[0]:02x}) byte64={raw_bytes[64] if len(raw_bytes) > 64 else 'n/a'}"
+            )
+            print(
+                f"[signing] raw sig: len={len(raw_bytes)}B "
+                f"first4={raw_bytes[:4].hex()} last4={raw_bytes[-4:].hex()} "
+                f"byte0={raw_bytes[0]}(0x{raw_bytes[0]:02x}) byte64={raw_bytes[64] if len(raw_bytes) > 64 else 'n/a'}"
+            )
+        except Exception:
+            logger.warning(f"[signing] could not decode sig as hex: {signature[:20]}")
+
         sig_data = _parse_stacks_connect_signature(signature)
         if not sig_data:
             return None
@@ -192,7 +209,11 @@ def recover_signing_address(message: str, signature: str) -> Optional[str]:
         recovery_id  = sig_data['recovery_id']
         message_hash = _hash_stacks_message(message)
 
+        logger.info(f"[signing] parsed: sig_bytes={len(sig_bytes)}B recovery_id={recovery_id} msg_hash={message_hash.hex()[:16]}...")
+        print(f"[signing] parsed: sig_bytes={len(sig_bytes)}B recovery_id={recovery_id} msg_hash={message_hash.hex()[:16]}...")
+
         recovery_attempts = [recovery_id] if recovery_id is not None else range(4)
+        all_recovered = []
 
         for rec_id in recovery_attempts:
             try:
@@ -206,10 +227,20 @@ def recover_signing_address(message: str, signature: str) -> Optional[str]:
                 for is_testnet in [False, True]:
                     addr = derive_stacks_address(pk.format(compressed=True), testnet=is_testnet)
                     if addr:
-                        logger.info(f"[signing] Recovered signing address: {addr} (recid={rec_id})")
-                        return addr
-            except Exception:
+                        all_recovered.append((rec_id, addr))
+                        break
+            except Exception as e:
+                all_recovered.append((rec_id, f'ERROR:{str(e)[:40]}'))
                 continue
+
+        logger.info(f"[signing] all recovery attempts: {all_recovered}")
+        print(f"[signing] all recovery attempts: {all_recovered}")
+
+        if all_recovered:
+            rec_id, addr = all_recovered[0]
+            if not addr.startswith('ERROR'):
+                logger.info(f"[signing] Recovered signing address: {addr} (recid={rec_id})")
+                return addr
 
         return None
     except Exception as e:
