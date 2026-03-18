@@ -86,6 +86,11 @@ class User(AbstractUser):
         max_length=255, blank=True,
         help_text="STX address for receiving payments (tips, merch). Falls back to stacks_address."
     )
+
+    # DAPP loyalty points — awarded on verified x402 payments
+    dapp_points = models.IntegerField(default=0)
+    # True once stacks_address is cryptographically verified at signup
+    wallet_verified = models.BooleanField(default=False)
     
     # Timestamps
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -434,3 +439,32 @@ class CreatorPlaylist(models.Model):
 
     def __str__(self):
         return f"{self.user.username} → {self.dcpe_playlist_name}"
+
+
+class DappPointEvent(models.Model):
+    """
+    Audit log of DAPP point awards for a user.
+    Points are credited on every verified x402 payment.
+    """
+    ACTION_CHOICES = [
+        ('tip_sent', 'Tip Sent'),
+        ('tip_received', 'Tip Received'),
+        ('subscription_upgrade', 'Subscription Upgrade'),
+        ('merch_purchase', 'Merch Purchase'),
+        ('wallet_signup', 'Wallet Signup Bonus'),
+    ]
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='point_events'
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    points = models.IntegerField()
+    tx_id = models.CharField(max_length=255, blank=True)
+    description = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.user.username} +{self.points}pts ({self.action})"

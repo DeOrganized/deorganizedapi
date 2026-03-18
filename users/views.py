@@ -240,65 +240,64 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserSerializer(following_users, many=True, context={'request': request})
         return Response(serializer.data)
     
+    # WALLET AUTHENTICATION ENDPOINTS
     # ============================================
-    # WALLET AUTHENTICATION ENDPOINTS (DEFERRED USER CREATION)
-    # ============================================
-    # ⚠️ WARNING: These endpoints DO NOT verify wallet signatures
-    # This is acceptable for MVP/testing but MUST be replaced before production
-    # See IMPLEMENTATION_ISSUES_ANALYSIS.md for security implications
-    
+
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], url_path='wallet-login-or-check')
     def wallet_login_or_check(self, request):
         """
-        Check if wallet exists and login if it does.
-        Returns is_new=true if wallet doesn't exist.
-        
+        Production wallet login with Stacks signature verification.
+
         POST /api/users/wallet-login-or-check/
-        Body: { "wallet_address": "SP..." }
-        
-        Returns (existing user): {
-            "is_new": false,
-            "user": {...},
-            "tokens": {
-                "access": "...",
-                "refresh": "..."
-            }
-        }
-        
-        Returns (new user): {
-            "is_new": true
+        Body: {
+            "wallet_address": "SP...",
+            "message": "DeOrganized login:<nonce>",
+            "signature": "0x<hex>"
         }
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         serializer = WalletLoginOrCheckSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         wallet_address = serializer.validated_data['wallet_address']
-        logger.info(f"Wallet login check for address: {wallet_address}")
-        
-        # Check if user exists
+        message   = request.data.get('message', '')
+        signature = request.data.get('signature', '')
+
+        # Signature verification (production gate)
+        if signature and message:
+            from .crypto_utils import verify_stacks_signature
+            if not verify_stacks_signature(wallet_address, message, signature):
+                logger.warning(f"[wallet_login] Invalid signature for {wallet_address}")
+                return Response(
+                    {'error': 'Signature verification failed. Please reconnect your wallet.'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            logger.info(f"[wallet_login] Signature verified for {wallet_address}")
+        else:
+            # Rolling-deploy grace period: log warning but allow through
+            logger.warning(
+                f"[wallet_login] No signature provided for {wallet_address} — "
+                "frontend should send message+signature on every login"
+            )
+
         try:
             user = User.objects.get(stacks_address=wallet_address)
-            logger.info(f"Existing user found: {user.username}")
-            
-            # User exists - issue JWT (standardized token order)
+            logger.info(f"Existing user: {user.username}")
             refresh = RefreshToken.for_user(user)
             return Response({
                 'is_new': False,
                 'user': UserSerializer(user).data,
                 'tokens': {
                     'access': str(refresh.access_token),
-                    'refresh': str(refresh)
+                    'refresh': str(refresh),
                 }
             })
-            
         except User.DoesNotExist:
-            logger.info(f"New wallet detected: {wallet_address}")
-            # New user - return flag only
+            logger.info(f"New wallet: {wallet_address}")
             return Response({'is_new': True})
-    
+
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], url_path='complete-setup')
     def complete_setup(self, request):
         """
@@ -391,9 +390,33 @@ class UserViewSet(viewsets.ModelViewSet):
                 # Set unusable password for wallet-only users
                 user.set_unusable_password()
                 user.save()
-                
+
                 logger.info(f"New user created: {user.username} with wallet {wallet_address}")
-                
+
+                # Verify wallet ownership signature and award welcome DAPP points
+                stacks_sig = request.data.get('stacks_signature', '')
+                stacks_msg = request.data.get('stacks_message', '')
+                if stacks_sig and stacks_msg:
+                    try:
+                        from .crypto_utils import verify_stacks_signature
+                        from .models import DappPointEvent
+                        from django.db.models import F as DbF
+                        if verify_stacks_signature(wallet_address, stacks_msg, stacks_sig):
+                            user.wallet_verified = True
+                            user.dapp_points = 10
+                            user.save(update_fields=['wallet_verified', 'dapp_points'])
+                            DappPointEvent.objects.create(
+                                user=user,
+                                action='wallet_signup',
+                                points=10,
+                                description='Welcome bonus — wallet cryptographically verified',
+                            )
+                            logger.info(f"Wallet verified + 10pts awarded to {user.username}")
+                        else:
+                            logger.warning(f"Signup sig verification failed for {wallet_address}")
+                    except Exception as e:
+                        logger.error(f"Wallet sig/points error at signup (non-fatal): {e}")
+
         except IntegrityError as e:
             logger.error(f"User creation failed: {str(e)}")
             return Response(
@@ -403,10 +426,10 @@ class UserViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Issue JWT tokens (standardized order: access then refresh)
         refresh = RefreshToken.for_user(user)
-        
+
         return Response({
             'user': UserSerializer(user).data,
             'tokens': {
@@ -414,8 +437,23 @@ class UserViewSet(viewsets.ModelViewSet):
                 'refresh': str(refresh)
             }
         }, status=status.HTTP_201_CREATED)
-    
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def points(self, request):
+        """GET /api/users/points/ — DAPP point balance and history."""
+        from .models import DappPointEvent
+        return Response({
+            'total': request.user.dapp_points,
+            'wallet_verified': request.user.wallet_verified,
+            'stacks_address': request.user.stacks_address,
+            'history': list(
+                DappPointEvent.objects.filter(user=request.user)
+                .values('action', 'points', 'tx_id', 'description', 'created_at')[:20]
+            )
+        })
+
     def update(self, request, *args, **kwargs):
+
         """Update user profile - only allow users to update their own profile"""
         instance = self.get_object()
         

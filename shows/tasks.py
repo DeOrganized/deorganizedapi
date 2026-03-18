@@ -119,35 +119,67 @@ def auto_create_recurring_episodes():
     Daily task to ensure recurring shows have future episodes provisioned.
     Ensures at least the next 5 episodes are created.
     """
+    import logging
+    from django.db import IntegrityError, transaction
     from .models import Show, ShowEpisode
-    
+
+    logger = logging.getLogger(__name__)
     recurring_shows = Show.objects.filter(is_recurring=True, status='published')
     created_count = 0
-    
+    error_count = 0
+
     for show in recurring_shows:
         # Get next 5 occurrences
         upcoming = show.get_upcoming_occurrences(count=5)
-        
+
         for occurrence in upcoming:
             air_date = occurrence.date()
-            
-            # Check if episode exists
-            if not ShowEpisode.objects.filter(show=show, air_date=air_date).exists():
-                # Get next episode number
-                last_ep = ShowEpisode.objects.filter(show=show).order_by('-episode_number').first()
-                next_num = (last_ep.episode_number + 1) if last_ep else 1
-                
-                ShowEpisode.objects.create(
-                    show=show,
-                    episode_number=next_num,
-                    title=f"Episode {next_num}",
-                    description=f"Automated episode for {show.title}",
-                    air_date=air_date,
-                    is_premium=False
+
+            # Skip if episode already exists for this date
+            if ShowEpisode.objects.filter(show=show, air_date=air_date).exists():
+                continue
+
+            try:
+                with transaction.atomic():
+                    # Lock the show's episodes to safely calculate next number
+                    last_ep = (
+                        ShowEpisode.objects.select_for_update()
+                        .filter(show=show)
+                        .order_by('-episode_number')
+                        .first()
+                    )
+                    next_num = (last_ep.episode_number + 1) if last_ep else 1
+
+                    ShowEpisode.objects.create(
+                        show=show,
+                        episode_number=next_num,
+                        title=f"Episode {next_num}",
+                        description=f"Automated episode for {show.title}",
+                        air_date=air_date,
+                        is_premium=False,
+                    )
+                    created_count += 1
+                    logger.info(
+                        f"[auto_create_recurring_episodes] Created ep {next_num} "
+                        f"for '{show.title}' on {air_date}"
+                    )
+            except IntegrityError:
+                # Episode for this date or number was already created by a concurrent run
+                error_count += 1
+                logger.warning(
+                    f"[auto_create_recurring_episodes] IntegrityError for "
+                    f"'{show.title}' on {air_date} — may have been created concurrently."
                 )
-                created_count += 1
-                
-    return f"Created {created_count} episodes for recurring shows."
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    f"[auto_create_recurring_episodes] Unexpected error for "
+                    f"'{show.title}' on {air_date}: {exc}"
+                )
+
+    summary = f"Created {created_count} episodes for recurring shows. Errors: {error_count}."
+    logger.info(f"[auto_create_recurring_episodes] {summary}")
+    return summary
 @shared_task
 def register_airing_episodes():
     """

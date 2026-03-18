@@ -85,11 +85,11 @@ def x402_required(get_pay_to, get_amounts, description="", bypass_cache=False):
             request.x402_tx_id = verified_tx_id
             request.x402_token_type = result.get("tokenType") or token_type
 
-            # Record receipt in DB
+            # Record receipt in DB and award DAPP points
             if request.user.is_authenticated:
                 resource_type = kwargs.get("resource_type", "generic")
                 resource_id = str(kwargs.get("pk") or kwargs.get("id") or request.path)
-                
+
                 PaymentReceipt.objects.get_or_create(
                     user=request.user,
                     resource_type=resource_type,
@@ -101,6 +101,24 @@ def x402_required(get_pay_to, get_amounts, description="", bypass_cache=False):
                         "receipt_token": result.get("receiptToken", ""),
                     }
                 )
+
+                # Award DAPP points — silently skipped if anything goes wrong
+                try:
+                    from django.db.models import F as DbF
+                    from users.models import DappPointEvent
+                    pts = max(1, int((amount_usdcx or amount_stx or 1_000_000) / 1_000_000))
+                    DappPointEvent.objects.create(
+                        user=request.user,
+                        action='tip_sent',
+                        points=pts,
+                        tx_id=verified_tx_id,
+                        description=description or 'x402 payment',
+                    )
+                    type(request.user).objects.filter(pk=request.user.pk).update(
+                        dapp_points=DbF('dapp_points') + pts
+                    )
+                except Exception:
+                    pass  # Points MUST never block a payment
 
             return view_func(request, *args, **kwargs)
         return wrapper

@@ -58,9 +58,15 @@ def _is_platform_staff(user):
 
 
 def require_active_subscription(view_func):
-    """Decorator that blocks free-plan users from DCPE write endpoints."""
+    """Decorator that blocks free-plan users from DCPE write endpoints.
+    Platform staff and superusers are exempt — they don't need a subscription.
+    """
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
+        # Admins/staff bypass the subscription check entirely
+        if _is_platform_staff(request.user):
+            return view_func(request, *args, **kwargs)
+
         from users.models import Subscription
         try:
             sub = Subscription.objects.get(user=request.user)
@@ -241,11 +247,37 @@ def ops_set_playlist(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@production_staff_required
 def ops_set_playlist_order(request):
-    """POST /ops/set-playlist-order/ — set the track order within a DCPE playlist. Staff-only."""
+    """
+    POST /ops/set-playlist-order/ — set the run-order of folders before streaming.
+
+    Expected body:
+        { "folders": ["folder_a", "folder_b", ...] }
+
+    Ownership check: non-admin users may only order playlists they own.
+    Forwards the body verbatim to DCPE's /api/set-playlist-order/.
+    """
     try:
         body = json.loads(request.body)
+        folders = body.get('folders', [])
+
+        if not isinstance(folders, list) or not folders:
+            return JsonResponse({'error': 'folders must be a non-empty list.'}, status=400)
+
+        # Non-admin creators may only reorder playlists they own
+        if not _is_platform_staff(request.user):
+            from users.models import CreatorPlaylist
+            owned_names = set(
+                CreatorPlaylist.objects.filter(user=request.user)
+                .values_list('dcpe_playlist_name', flat=True)
+            )
+            unauthorized = [f for f in folders if f not in owned_names]
+            if unauthorized:
+                return JsonResponse(
+                    {'error': f'You do not have access to: {unauthorized}'},
+                    status=403,
+                )
+
         resp = http_requests.post(
             f"{DCPE_BASE()}/api/set-playlist-order/",
             json=body,
@@ -254,7 +286,9 @@ def ops_set_playlist_order(request):
         )
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
-        return _proxy_error(exc)
+        return _proxy_error(exc, context="SetPlaylistOrder")
+
+
 
 
 @api_view(['POST'])
