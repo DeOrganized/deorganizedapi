@@ -25,4 +25,13 @@ urlpatterns = [
     # Content management (requires active subscription)
     path('create-folder/', views_ops.ops_create_folder, name='create_folder'),
     path('upload/', views_ops.ops_upload, name='upload'),
+
+    # Creator Studio DCPE endpoints (authenticated creator + active subscription)
+    path('dcpe/upload/',                       views_ops.dcpe_creator_upload,        name='dcpe_creator_upload'),
+    path('dcpe/prep/',                         views_ops.dcpe_creator_prep,          name='dcpe_creator_prep'),
+    path('dcpe/prep-status/<str:prep_id>/',    views_ops.dcpe_creator_prep_status,   name='dcpe_creator_prep_status'),
+    path('dcpe/set-playlist/',                 views_ops.dcpe_creator_set_playlist,  name='dcpe_creator_set_playlist'),
+    path('dcpe/stream-start/',                 views_ops.dcpe_creator_stream_start,  name='dcpe_creator_stream_start'),
+    path('dcpe/stream-stop/',                  views_ops.dcpe_creator_stream_stop,   name='dcpe_creator_stream_stop'),
+    path('dcpe/status/',                       views_ops.dcpe_creator_status,        name='dcpe_creator_status'),
 ]

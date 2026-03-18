@@ -312,6 +312,150 @@ def ops_stream_stop(request):
 
 
 # ---------------------------------------------------------------------------
+# Creator Studio DCPE Endpoints — /ops/dcpe/*
+# Accessible to any authenticated creator with an active subscription.
+# These share the same DCPE instance as the admin ops routes but are not
+# gated behind production_staff_required.
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_upload(request):
+    """
+    POST /ops/dcpe/upload/ — session-based file upload for Creator Studio.
+    Forwards one file at a time to DCPE /api/upload/.
+    """
+    try:
+        f = request.FILES.get('file')
+        if not f:
+            return JsonResponse({'error': 'file is required'}, status=400)
+
+        session_id = request.POST.get('session_id', '').strip()
+        files = [('file', (f.name, f.read(), f.content_type))]
+        data = {'session_id': session_id} if session_id else {}
+
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/upload/",
+            files=files,
+            data=data,
+            headers=DCPE_HEADERS(),
+            timeout=120,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Upload")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_prep(request):
+    """
+    POST /ops/dcpe/prep/ — kick off normalization pipeline for uploaded file_ids.
+    Body: { "file_ids": [...] }
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/prep/",
+            json=body,
+            headers=DCPE_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Prep")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_prep_status(request, prep_id):
+    """
+    GET /ops/dcpe/prep-status/<prep_id>/ — per-file normalization progress.
+    """
+    try:
+        resp = http_requests.get(
+            f"{DCPE_BASE()}/api/prep-status/{prep_id}",
+            headers=DCPE_HEADERS(),
+            timeout=15,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Prep Status")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_set_playlist(request):
+    """
+    POST /ops/dcpe/set-playlist/ — set DCPE playlist to creator's prepped folder.
+    Body: { "playlist_id": "creator_<prep_id>" }
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/set-playlist/",
+            json=body,
+            headers=DCPE_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Set Playlist")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_stream_start(request):
+    """POST /ops/dcpe/stream-start/ — start RTMP stream from creator session."""
+    try:
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/stream-start/",
+            headers=DCPE_HEADERS(),
+            timeout=10,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Stream Start")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_stream_stop(request):
+    """POST /ops/dcpe/stream-stop/ — stop RTMP stream."""
+    try:
+        resp = http_requests.post(
+            f"{DCPE_BASE()}/api/stream-stop/",
+            headers=DCPE_HEADERS(),
+            timeout=10,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Stream Stop")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@require_active_subscription
+def dcpe_creator_status(request):
+    """GET /ops/dcpe/status/ — DCPE stream and engine status."""
+    try:
+        resp = http_requests.get(
+            f"{DCPE_BASE()}/api/status/",
+            headers=DCPE_HEADERS(),
+            timeout=10,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DCPE Status")
+
+
+# ---------------------------------------------------------------------------
 # Railway GraphQL Endpoints
 # ---------------------------------------------------------------------------
 
