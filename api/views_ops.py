@@ -352,20 +352,52 @@ def ops_stream_stop(request):
 # gated behind production_staff_required.
 # ---------------------------------------------------------------------------
 
+DCPE_UPLOAD_COST = 100  # DAP credits per video file
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def dcpe_creator_upload(request):
     """
     POST /ops/dcpe/upload/ — session-based file upload for Creator Studio.
-    Forwards one file at a time to DCPE /api/upload/.
+    Deducts 100 DAP credits per file before forwarding to DCPE /api/upload/.
+    Returns 402 if the user has insufficient credits.
     """
     try:
         f = request.FILES.get('file')
         if not f:
             return JsonResponse({'error': 'file is required'}, status=400)
 
+        stacks_address = getattr(request.user, 'stacks_address', None)
+        if not stacks_address:
+            return JsonResponse({'error': 'No Stacks address on account.'}, status=403)
+
+        # Deduct credits before upload — atomic, row-locked in DAP service
+        deduct_resp = http_requests.post(
+            f"{DAP_BASE()}/api/credits/deduct",
+            json={
+                'stacks_address': stacks_address,
+                'amount': DCPE_UPLOAD_COST,
+                'service_name': 'playout-upload',
+                'description': f'Video upload: {f.name}',
+            },
+            headers=AGENT_HEADERS(),
+            timeout=15,
+        )
+        if deduct_resp.status_code == 402:
+            data = deduct_resp.json()
+            return JsonResponse({
+                'error': 'Insufficient DAP credits.',
+                'balance': data.get('balance', 0),
+                'required': DCPE_UPLOAD_COST,
+            }, status=402)
+        if not deduct_resp.ok:
+            return JsonResponse({'error': 'Credit deduction failed. Please try again.'}, status=502)
+
+        # Credits deducted — forward file to DCPE
         session_id = request.POST.get('session_id', '').strip()
-        files = [('file', (f.name, f.read(), f.content_type))]
+        file_bytes = f.read()
+        files = [('file', (f.name, file_bytes, f.content_type))]
         data = {'session_id': session_id} if session_id else {}
 
         resp = http_requests.post(
@@ -375,7 +407,11 @@ def dcpe_creator_upload(request):
             headers=DCPE_HEADERS(),
             timeout=120,
         )
-        return JsonResponse(resp.json(), status=resp.status_code)
+        result = resp.json()
+        # Include updated balance so frontend can refresh without an extra call
+        result['credits_deducted'] = DCPE_UPLOAD_COST
+        result['new_balance'] = deduct_resp.json().get('new_balance')
+        return JsonResponse(result, status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="DCPE Upload")
 
@@ -751,6 +787,27 @@ def dap_balance(request, address):
             f"{DAP_BASE()}/api/users/{address}/balance",
             headers=AGENT_HEADERS(),
             timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dap_deduct(request):
+    """
+    POST /api/dap/deduct/ — deduct DAP credits for a service.
+    Body: { stacks_address, amount, service_name, description }
+    Returns 402 if insufficient credits.
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        resp = http_requests.post(
+            f"{DAP_BASE()}/api/credits/deduct",
+            json=body,
+            headers=AGENT_HEADERS(),
+            timeout=15,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
