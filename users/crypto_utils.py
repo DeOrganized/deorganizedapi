@@ -110,7 +110,8 @@ def verify_stacks_signature(
                 # Derive address from this public key (try both mainnet and testnet)
                 for is_testnet in [False, True]:
                     derived_address = derive_stacks_address(pk.format(compressed=True), testnet=is_testnet)
-                    
+                    print(f"   Derived ({'testnet' if is_testnet else 'mainnet'}): {derived_address}")
+
                     if derived_address == wallet_address:
                         public_key = pk
                         matched_recovery_id = rec_id
@@ -230,13 +231,12 @@ def _parse_stacks_connect_signature(signature: str) -> Optional[dict]:
                 }
 
             # RSV format — newer Leather wallet request() API
-            # last byte is the raw recovery ID (0 or 1)
+            # Last byte hints at recovery_id, but try all to be safe.
             if last_byte in (0, 1, 2, 3):
-                recovery_id = int(last_byte)
-                print(f"   RSV format — recovery_id: {recovery_id} (last byte)")
+                print(f"   RSV format hint — last byte {last_byte}, trying all recovery IDs")
                 return {
                     'signature': sig_bytes[:64],  # 64 bytes r+s
-                    'recovery_id': recovery_id,
+                    'recovery_id': None,  # try all
                 }
 
             # Unknown — strip first byte and try all recovery IDs
