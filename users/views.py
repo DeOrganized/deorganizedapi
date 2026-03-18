@@ -472,6 +472,13 @@ class UserViewSet(viewsets.ModelViewSet):
                     except Exception as e:
                         logger.error(f"Points award error at signup (non-fatal): {e}")
 
+                # Mint 1000 DAP welcome credits (non-fatal if DAP service unavailable).
+                try:
+                    from .dap_rewards import issue_dap_reward
+                    issue_dap_reward(user, 'welcome_bonus', logger)
+                except Exception as e:
+                    logger.error(f"[dap_rewards] welcome_bonus mint failed (non-fatal): {e}")
+
         except IntegrityError as e:
             logger.error(f"User creation failed: {str(e)}")
             return Response(
@@ -918,7 +925,16 @@ class FollowViewSet(viewsets.ModelViewSet):
             actor=request.user,
             notification_type='follow'
         )
-        
+
+        # DAP follow reward — one-time, only for specific creator
+        if follow.following.username == 'PeaceLoveMusic':
+            try:
+                from .dap_rewards import issue_dap_reward
+                import logging as _logging
+                issue_dap_reward(request.user, 'follow_peacelovemusic', _logging.getLogger(__name__))
+            except Exception as e:
+                pass  # non-fatal
+
         return Response(
             {'status': 'followed', 'follow': FollowSerializer(follow).data},
             status=status.HTTP_201_CREATED
