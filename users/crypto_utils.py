@@ -110,7 +110,6 @@ def verify_stacks_signature(
                 # Derive address from this public key (try both mainnet and testnet)
                 for is_testnet in [False, True]:
                     derived_address = derive_stacks_address(pk.format(compressed=True), testnet=is_testnet)
-                    print(f"   Derived ({'testnet' if is_testnet else 'mainnet'}): {derived_address}")
 
                     if derived_address == wallet_address:
                         public_key = pk
@@ -168,6 +167,54 @@ def _encode_varint(n: int) -> bytes:
         return b'\xfe' + n.to_bytes(4, 'little')
     else:
         return b'\xff' + n.to_bytes(8, 'little')
+
+
+def recover_signing_address(message: str, signature: str) -> Optional[str]:
+    """
+    Recover the Stacks address that corresponds to the key used to sign a message.
+
+    stx_signMessage in Leather uses an app/data-derived key whose address is
+    NOT the same as the user's STX spending-key address.  This function
+    recovers whichever address the signing key maps to, so we can store it
+    and verify it on future logins without caring which derivation path
+    Leather used.
+
+    Returns the recovered mainnet (SP) address, or None on any failure.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        sig_data = _parse_stacks_connect_signature(signature)
+        if not sig_data:
+            return None
+
+        sig_bytes    = sig_data['signature']
+        recovery_id  = sig_data['recovery_id']
+        message_hash = _hash_stacks_message(message)
+
+        recovery_attempts = [recovery_id] if recovery_id is not None else range(4)
+
+        for rec_id in recovery_attempts:
+            try:
+                recoverable_sig = sig_bytes + bytes([rec_id])
+                pk = PublicKey.from_signature_and_message(
+                    recoverable_sig,
+                    message_hash,
+                    hasher=None,
+                )
+                # Prefer mainnet address; fall back to testnet
+                for is_testnet in [False, True]:
+                    addr = derive_stacks_address(pk.format(compressed=True), testnet=is_testnet)
+                    if addr:
+                        logger.info(f"[signing] Recovered signing address: {addr} (recid={rec_id})")
+                        return addr
+            except Exception:
+                continue
+
+        return None
+    except Exception as e:
+        logger.error(f"[signing] recover_signing_address failed: {e}")
+        return None
 
 
 def _hash_stacks_message(message: str) -> bytes:

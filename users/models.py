@@ -91,6 +91,16 @@ class User(AbstractUser):
     dapp_points = models.IntegerField(default=0)
     # True once stacks_address is cryptographically verified at signup
     wallet_verified = models.BooleanField(default=False)
+
+    # The Stacks address derived from the key used to sign messages via
+    # stx_signMessage. This is NOT the same as stacks_address (STX spending
+    # key) — Leather signs messages with the app/data key, which has a
+    # different derivation path. Stored on first verified login and used
+    # to authenticate subsequent logins.
+    signing_address = models.CharField(
+        max_length=64, blank=True, null=True, db_index=True,
+        help_text="Address recovered from the signing key (stx_signMessage). May differ from stacks_address."
+    )
     
     # Timestamps
     date_joined = models.DateTimeField(auto_now_add=True)

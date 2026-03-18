@@ -285,14 +285,20 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        from .crypto_utils import verify_stacks_signature
-        if not verify_stacks_signature(wallet_address, message, signature):
-            logger.warning(f"[wallet_login] Invalid signature for {wallet_address}")
+        # Recover the address that corresponds to the signing key.
+        # NOTE: stx_signMessage in Leather uses an app/data-derived key whose
+        # address differs from the user's STX spending-key address.  We store
+        # this signing_address on the user record and verify against it, rather
+        # than comparing to stacks_address.
+        from .crypto_utils import recover_signing_address
+        recovered = recover_signing_address(message, signature)
+        if not recovered:
+            logger.warning(f"[wallet_login] Could not recover signing address for {wallet_address}")
             return Response(
                 {'error': 'Signature verification failed. Please reconnect your wallet.'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        logger.info(f"[wallet_login] Signature verified for {wallet_address}")
+        logger.info(f"[wallet_login] Recovered signing address: {recovered} for wallet: {wallet_address}")
 
         matching_users = User.objects.filter(stacks_address=wallet_address).order_by('date_joined')
         if matching_users.exists():
@@ -303,6 +309,25 @@ class UserViewSet(viewsets.ModelViewSet):
                 dup_ids = list(duplicates.values_list('id', flat=True))
                 logger.warning(f"[wallet_login] Removing {len(dup_ids)} duplicate(s) for {wallet_address}: {dup_ids}")
                 duplicates.delete()
+
+            # Verify or bind the signing address
+            if user.signing_address:
+                if user.signing_address != recovered:
+                    logger.warning(
+                        f"[wallet_login] Signing key mismatch for {wallet_address}: "
+                        f"expected {user.signing_address}, got {recovered}"
+                    )
+                    return Response(
+                        {'error': 'Signature key mismatch. Use the same wallet you registered with.'},
+                        status=status.HTTP_401_UNAUTHORIZED
+                    )
+            else:
+                # First verified login — bind the signing address
+                user.signing_address = recovered
+                user.wallet_verified = True
+                user.save(update_fields=['signing_address', 'wallet_verified'])
+                logger.info(f"[wallet_login] Bound signing address {recovered} to user {user.username}")
+
             logger.info(f"Existing user: {user.username}")
             refresh = RefreshToken.for_user(user)
             return Response({
