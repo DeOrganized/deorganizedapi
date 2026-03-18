@@ -472,13 +472,6 @@ class UserViewSet(viewsets.ModelViewSet):
                     except Exception as e:
                         logger.error(f"Points award error at signup (non-fatal): {e}")
 
-                # Mint 1000 DAP welcome credits (non-fatal if DAP service unavailable).
-                try:
-                    from .dap_rewards import issue_dap_reward
-                    issue_dap_reward(user, 'welcome_bonus', logger)
-                except Exception as e:
-                    logger.error(f"[dap_rewards] welcome_bonus mint failed (non-fatal): {e}")
-
         except IntegrityError as e:
             logger.error(f"User creation failed: {str(e)}")
             return Response(
@@ -488,6 +481,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Mint 1000 DAP welcome credits — outside transaction (non-fatal).
+        try:
+            from .dap_rewards import issue_dap_reward
+            issue_dap_reward(user, 'welcome_bonus', logger)
+        except Exception as e:
+            logger.error(f"[dap_rewards] welcome_bonus mint failed (non-fatal): {e}")
 
         # Issue JWT tokens
         refresh = RefreshToken.for_user(user)
@@ -513,6 +513,30 @@ class UserViewSet(viewsets.ModelViewSet):
                 .values('action', 'points', 'tx_id', 'description', 'created_at')[:20]
             )
         })
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated], url_path='dap-notifications')
+    def dap_notifications(self, request):
+        """GET /api/users/dap-notifications/ — unread DAP credit events for this user."""
+        from .models import DappPointEvent
+        events = (
+            DappPointEvent.objects
+            .filter(user=request.user, is_read=False)
+            .order_by('-created_at')[:20]
+        )
+        return Response([{
+            'id': e.id,
+            'action': e.action,
+            'points': e.points,
+            'description': e.description,
+            'created_at': e.created_at.isoformat(),
+        } for e in events])
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='dap-notifications-mark-read')
+    def dap_notifications_mark_read(self, request):
+        """POST /api/users/dap-notifications-mark-read/ — mark all DAP notifications as read."""
+        from .models import DappPointEvent
+        DappPointEvent.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'status': 'ok'})
 
     def update(self, request, *args, **kwargs):
 

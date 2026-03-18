@@ -462,15 +462,19 @@ class DappPointEvent(models.Model):
         ('subscription_upgrade', 'Subscription Upgrade'),
         ('merch_purchase', 'Merch Purchase'),
         ('wallet_signup', 'Wallet Signup Bonus'),
+        ('admin_dap_grant', 'Admin DAP Grant'),
+        ('dap_deduct', 'DAP Credits Deducted'),
     ]
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='point_events'
     )
-    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    # max_length=64 to accommodate dap_reward:<key> tracking actions
+    action = models.CharField(max_length=64)
     points = models.IntegerField()
     tx_id = models.CharField(max_length=255, blank=True)
     description = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         ordering = ['-created_at']

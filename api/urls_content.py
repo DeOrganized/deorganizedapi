@@ -12,6 +12,7 @@ urlpatterns = [
     path('dap/balance/<str:address>/',               views_ops.dap_balance,         name='dap_balance'),
     path('dap/transactions/<str:address>/',          views_ops.dap_transactions,    name='dap_transactions'),
     path('dap/deduct/',                              views_ops.dap_deduct,          name='dap_deduct'),
+    path('admin/dap/grant/',                         views_ops.dap_grant,           name='dap_grant'),
 
     # Content Generation
     path('content/generate/',                        views_ops.content_generate,    name='content_generate'),

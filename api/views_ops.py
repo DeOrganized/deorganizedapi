@@ -809,9 +809,107 @@ def dap_deduct(request):
             headers=AGENT_HEADERS(),
             timeout=15,
         )
+        # Track successful deductions as unread notifications
+        if resp.status_code in (200, 201):
+            try:
+                from users.models import DappPointEvent
+                amount = body.get('amount', 0)
+                description = body.get('description', body.get('service_name', 'Credits deducted'))
+                DappPointEvent.objects.create(
+                    user=request.user,
+                    action='dap_deduct',
+                    points=-abs(int(amount)),
+                    description=description,
+                    is_read=False,
+                )
+            except Exception as e:
+                logger.warning(f"[dap_deduct] DappPointEvent tracking failed: {e}")
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="DAP")
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def dap_grant(request):
+    """
+    POST /api/admin/dap/grant/ — admin mint DAP credits to a user.
+    Body: { stacks_address, amount, description }
+    Returns { success, new_balance, amount, description }
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        stacks_address = body.get('stacks_address', '').strip()
+        amount = body.get('amount')
+        description = body.get('description', 'Admin grant')
+
+        if not stacks_address or not amount:
+            return JsonResponse({'error': 'stacks_address and amount are required'}, status=400)
+
+        try:
+            amount = int(amount)
+            if amount <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            return JsonResponse({'error': 'amount must be a positive integer'}, status=400)
+
+        # Register (idempotent — 409 = already registered, both fine)
+        try:
+            http_requests.post(
+                f"{DAP_BASE()}/api/users/register",
+                json={'stacks_address': stacks_address},
+                headers=AGENT_HEADERS(),
+                timeout=15,
+            )
+        except Exception as e:
+            logger.warning(f"[dap_grant] register step failed: {e}")
+
+        # Mint
+        mint_resp = http_requests.post(
+            f"{DAP_BASE()}/api/credits/mint",
+            json={'stacks_address': stacks_address, 'amount': amount, 'description': description},
+            headers=AGENT_HEADERS(),
+            timeout=15,
+        )
+        if mint_resp.status_code not in (200, 201):
+            logger.error(f"[dap_grant] mint failed {mint_resp.status_code}: {mint_resp.text[:200]}")
+            return JsonResponse(
+                {'error': f'DAP mint failed ({mint_resp.status_code})'},
+                status=502,
+            )
+
+        # Fetch new balance
+        new_balance = None
+        try:
+            bal_resp = http_requests.get(
+                f"{DAP_BASE()}/api/users/{stacks_address}/balance",
+                headers=AGENT_HEADERS(),
+                timeout=10,
+            )
+            if bal_resp.ok:
+                new_balance = bal_resp.json().get('balance')
+        except Exception:
+            pass
+
+        # Record unread notification for the target user
+        try:
+            from django.contrib.auth import get_user_model
+            from users.models import DappPointEvent
+            User = get_user_model()
+            target_user = User.objects.filter(stacks_address=stacks_address).first()
+            if target_user:
+                DappPointEvent.objects.create(
+                    user=target_user,
+                    action='admin_dap_grant',
+                    points=amount,
+                    description=f'Admin grant: {description}',
+                    is_read=False,
+                )
+        except Exception as e:
+            logger.warning(f"[dap_grant] DappPointEvent creation failed: {e}")
+
+        logger.info(f"[dap_grant] {request.user.username} granted {amount} credits to {stacks_address}: {description}")
+        return JsonResponse({'success': True, 'new_balance': new_balance, 'amount': amount, 'description': description})
 
 
 @api_view(['GET'])
