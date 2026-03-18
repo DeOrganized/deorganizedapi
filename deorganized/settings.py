@@ -11,7 +11,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
+
+# Fail fast if SECRET_KEY is not set in production
+if not SECRET_KEY:
+    if not DEBUG:
+        raise RuntimeError(
+            'DJANGO_SECRET_KEY environment variable must be set in production. '
+            'Generate one with: python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"'
+        )
+    SECRET_KEY = 'insecure-dev-only-key-do-not-use-in-production'  # noqa: S105
 
 # Production
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',')
@@ -144,8 +153,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS Settings - Allow all origins for development
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Settings
+# In production set CORS_ALLOWED_ORIGINS to a comma-separated list of allowed origins.
+# e.g. CORS_ALLOWED_ORIGINS=https://deorganized.io,https://www.deorganized.io
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    _cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = [
     'payment-required',
@@ -192,6 +207,15 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '200/day',
+        'user': '2000/day',
+        'auth': '10/minute',   # applied to login / registration endpoints
+    },
 }
 
 # JWT Settings

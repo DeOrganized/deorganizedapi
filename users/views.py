@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly, IsAdminUser
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -11,7 +12,7 @@ import uuid
 import time
 from .models import Like, Comment, Follow, Notification, RTMPDestination, Subscription, CreatorPlaylist
 from .serializers import (
-    UserSerializer, UserListSerializer, UserRegistrationSerializer,
+    UserSerializer, PrivateUserSerializer, UserListSerializer, UserRegistrationSerializer,
     UserUpdateSerializer,
     LikeSerializer, CommentSerializer, CommentCreateSerializer,
     FollowSerializer, CreatorProfileSerializer,
@@ -19,6 +20,11 @@ from .serializers import (
     NotificationSerializer, RTMPDestinationSerializer,
     BroadcastScheduleSerializer, SubscriptionSerializer
 )
+
+
+class AuthRateThrottle(AnonRateThrottle):
+    """Tight rate limit applied to login and registration endpoints."""
+    scope = 'auth'
 
 User = get_user_model()
 
@@ -46,6 +52,11 @@ class UserViewSet(viewsets.ModelViewSet):
     ordering_fields = ['date_joined']  # Removed 'follower_count' since it's not an annotated field
     ordering = ['-date_joined']
     
+    def get_throttles(self):
+        if self.action in ['wallet_login_or_check', 'complete_setup', 'login', 'register']:
+            return [AuthRateThrottle()]
+        return super().get_throttles()
+
     def get_serializer_class(self):
         if self.action == 'register':
             return UserRegistrationSerializer
@@ -55,6 +66,8 @@ class UserViewSet(viewsets.ModelViewSet):
             return UserListSerializer
         elif self.action == 'creator_profile':
             return CreatorProfileSerializer
+        elif self.action in ['me', 'wallet_login_or_check', 'complete_setup', 'login']:
+            return PrivateUserSerializer
         return UserSerializer
     
     def get_serializer(self, *args, **kwargs):
@@ -265,22 +278,22 @@ class UserViewSet(viewsets.ModelViewSet):
         message   = request.data.get('message', '')
         signature = request.data.get('signature', '')
 
-        # Signature verification (production gate)
-        if signature and message:
-            from .crypto_utils import verify_stacks_signature
-            if not verify_stacks_signature(wallet_address, message, signature):
-                logger.warning(f"[wallet_login] Invalid signature for {wallet_address}")
-                return Response(
-                    {'error': 'Signature verification failed. Please reconnect your wallet.'},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-            logger.info(f"[wallet_login] Signature verified for {wallet_address}")
-        else:
-            # Rolling-deploy grace period: log warning but allow through
-            logger.warning(
-                f"[wallet_login] No signature provided for {wallet_address} — "
-                "frontend should send message+signature on every login"
+        # Signature is required — reject logins that don't prove wallet ownership.
+        if not (signature and message):
+            logger.warning(f"[wallet_login] Missing signature for {wallet_address}")
+            return Response(
+                {'error': 'Wallet signature required. Please reconnect your wallet.'},
+                status=status.HTTP_401_UNAUTHORIZED
             )
+
+        from .crypto_utils import verify_stacks_signature
+        if not verify_stacks_signature(wallet_address, message, signature):
+            logger.warning(f"[wallet_login] Invalid signature for {wallet_address}")
+            return Response(
+                {'error': 'Signature verification failed. Please reconnect your wallet.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        logger.info(f"[wallet_login] Signature verified for {wallet_address}")
 
         try:
             user = User.objects.get(stacks_address=wallet_address)
@@ -288,7 +301,7 @@ class UserViewSet(viewsets.ModelViewSet):
             refresh = RefreshToken.for_user(user)
             return Response({
                 'is_new': False,
-                'user': UserSerializer(user).data,
+                'user': PrivateUserSerializer(user).data,
                 'tokens': {
                     'access': str(refresh.access_token),
                     'refresh': str(refresh),
@@ -339,8 +352,26 @@ class UserViewSet(viewsets.ModelViewSet):
         logger.info(f"✅ Validation passed")
         
         wallet_address = serializer.validated_data['wallet_address']
-        
-        # CRITICAL FIX #5: Check if wallet already registered
+
+        # Require wallet signature to prove ownership before creating the account.
+        stacks_sig = request.data.get('stacks_signature', '')
+        stacks_msg = request.data.get('stacks_message', '')
+        if not (stacks_sig and stacks_msg):
+            logger.warning(f"[complete_setup] Missing signature for {wallet_address}")
+            return Response(
+                {'error': 'Wallet signature required to create an account.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        from .crypto_utils import verify_stacks_signature
+        if not verify_stacks_signature(wallet_address, stacks_msg, stacks_sig):
+            logger.warning(f"[complete_setup] Invalid signature for {wallet_address}")
+            return Response(
+                {'error': 'Signature verification failed. Please reconnect your wallet.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        logger.info(f"[complete_setup] Signature verified for {wallet_address}")
+
+        # Check if wallet already registered
         if User.objects.filter(stacks_address=wallet_address).exists():
             logger.warning(f"Duplicate registration attempt for wallet: {wallet_address}")
             return Response(
@@ -393,29 +424,21 @@ class UserViewSet(viewsets.ModelViewSet):
 
                 logger.info(f"New user created: {user.username} with wallet {wallet_address}")
 
-                # Verify wallet ownership signature and award welcome DAPP points
-                stacks_sig = request.data.get('stacks_signature', '')
-                stacks_msg = request.data.get('stacks_message', '')
-                if stacks_sig and stacks_msg:
-                    try:
-                        from .crypto_utils import verify_stacks_signature
-                        from .models import DappPointEvent
-                        from django.db.models import F as DbF
-                        if verify_stacks_signature(wallet_address, stacks_msg, stacks_sig):
-                            user.wallet_verified = True
-                            user.dapp_points = 10
-                            user.save(update_fields=['wallet_verified', 'dapp_points'])
-                            DappPointEvent.objects.create(
-                                user=user,
-                                action='wallet_signup',
-                                points=10,
-                                description='Welcome bonus — wallet cryptographically verified',
-                            )
-                            logger.info(f"Wallet verified + 10pts awarded to {user.username}")
-                        else:
-                            logger.warning(f"Signup sig verification failed for {wallet_address}")
-                    except Exception as e:
-                        logger.error(f"Wallet sig/points error at signup (non-fatal): {e}")
+                # Signature already verified above — mark wallet verified and award welcome points.
+                try:
+                    from .models import DappPointEvent
+                    user.wallet_verified = True
+                    user.dapp_points = 10
+                    user.save(update_fields=['wallet_verified', 'dapp_points'])
+                    DappPointEvent.objects.create(
+                        user=user,
+                        action='wallet_signup',
+                        points=10,
+                        description='Welcome bonus — wallet cryptographically verified',
+                    )
+                    logger.info(f"Wallet verified + 10pts awarded to {user.username}")
+                except Exception as e:
+                    logger.error(f"Points award error at signup (non-fatal): {e}")
 
         except IntegrityError as e:
             logger.error(f"User creation failed: {str(e)}")
@@ -427,11 +450,11 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Issue JWT tokens (standardized order: access then refresh)
+        # Issue JWT tokens
         refresh = RefreshToken.for_user(user)
 
         return Response({
-            'user': UserSerializer(user).data,
+            'user': PrivateUserSerializer(user).data,
             'tokens': {
                 'access': str(refresh.access_token),
                 'refresh': str(refresh)
@@ -469,18 +492,17 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         
-        return Response(UserSerializer(instance).data)
-    
+        return Response(PrivateUserSerializer(instance).data)
+
     def partial_update(self, request, *args, **kwargs):
         """Partial update user profile"""
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
-    
+
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def me(self, request):
-        """Get current authenticated user's profile"""
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
+        """Get current authenticated user's own profile (includes PII)."""
+        return Response(PrivateUserSerializer(request.user).data)
 
     # ============================================
     # ADMIN DASHBOARD ENDPOINTS (Staff only)

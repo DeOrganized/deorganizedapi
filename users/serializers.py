@@ -8,37 +8,43 @@ User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """Full user profile serializer"""
+    """Public user profile serializer — no PII."""
     follower_count = serializers.IntegerField(read_only=True)
     following_count = serializers.IntegerField(read_only=True)
     is_creator = serializers.BooleanField(read_only=True)
-    
+
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'display_name', 'email', 'first_name', 'last_name',
+            'id', 'username', 'display_name',
             'role', 'stacks_address', 'bio', 'profile_picture', 'cover_photo',
             'website', 'twitter', 'instagram', 'youtube',
-            'is_verified', 'is_staff', 'date_joined',
-            'follower_count', 'following_count', 'is_creator'
+            'is_verified', 'date_joined',
+            'follower_count', 'following_count', 'is_creator',
         ]
         read_only_fields = ['id', 'date_joined', 'is_verified']
-        extra_kwargs = {
-            'email': {'required': True}
-        }
+
+
+class PrivateUserSerializer(UserSerializer):
+    """Authenticated user's own profile — includes PII fields not shown publicly."""
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + [
+            'email', 'first_name', 'last_name', 'is_staff',
+        ]
 
 
 class UserListSerializer(serializers.ModelSerializer):
-    """Lightweight user serializer for lists"""
+    """Lightweight user serializer for lists — public fields only."""
     is_creator = serializers.BooleanField(read_only=True)
     follower_count = serializers.IntegerField(read_only=True)
-    
+
     class Meta:
         model = User
         fields = [
             'id', 'username', 'profile_picture',
-            'role', 'is_verified', 'is_staff', 'is_active', 'is_creator', 'follower_count', 'bio',
-            'stacks_address', 'date_joined'
+            'role', 'is_verified', 'is_creator', 'follower_count', 'bio',
+            'stacks_address', 'date_joined',
         ]
         read_only_fields = fields
 
@@ -160,19 +166,19 @@ class FollowSerializer(serializers.ModelSerializer):
 
 
 class CreatorProfileSerializer(serializers.ModelSerializer):
-    """Extended profile for creators with their shows"""
+    """Extended public profile for creators with their shows — no PII."""
     follower_count = serializers.IntegerField(read_only=True)
     following_count = serializers.IntegerField(read_only=True)
     show_count = serializers.IntegerField(source='shows.count', read_only=True)
-    
+
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name',
+            'id', 'username', 'display_name',
             'role', 'bio', 'profile_picture', 'cover_photo',
             'website', 'twitter', 'instagram', 'youtube',
             'is_verified', 'date_joined',
-            'follower_count', 'following_count', 'show_count'
+            'follower_count', 'following_count', 'show_count',
         ]
         read_only_fields = fields
 
