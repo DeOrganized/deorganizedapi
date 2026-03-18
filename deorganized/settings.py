@@ -160,7 +160,7 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     _cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+    CORS_ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in _cors_origins.split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = [
     'payment-required',
