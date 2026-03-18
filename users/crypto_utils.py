@@ -157,19 +157,24 @@ def verify_stacks_signature(
 def _hash_stacks_message(message: str) -> bytes:
     """
     Hash a message for Stacks signature verification.
-    
-    Stacks uses a specific message format with a prefix.
-    Different wallets may use different prefixes, so we try the standard one.
-    
+
+    Stacks wallets (Leather, Xverse) prepend a fixed prefix before hashing,
+    matching the stacks.js `hashMessage` implementation:
+
+        sha256("\x17Stacks Signed Message:\n" + message_bytes)
+
+    The leading \x17 byte (decimal 23) is the byte-length of the string
+    "Stacks Signed Message:\n", mirroring Bitcoin's message-signing convention.
+
     Args:
         message: The message string to hash
-    
+
     Returns:
-        bytes: SHA-256 hash of the message
+        bytes: SHA-256 hash of prefixed message
     """
-    # Standard Stacks message signing uses the message as-is
-    # Some wallets may add prefixes, but Stacks Connect typically doesn't
-    return hashlib.sha256(message.encode('utf-8')).digest()
+    prefix = b'\x17Stacks Signed Message:\n'
+    message_bytes = message.encode('utf-8')
+    return hashlib.sha256(prefix + message_bytes).digest()
 
 
 def _parse_stacks_connect_signature(signature: str) -> Optional[dict]:
@@ -201,20 +206,30 @@ def _parse_stacks_connect_signature(signature: str) -> Optional[dict]:
             print(f"❌ Failed to decode hex: {e}")
             return None
         
-        # Stacks signatures are typically 65 bytes
-        # First byte may be a signature type indicator, NOT a recovery ID
-        # We'll extract the 64-byte r+s and try all recovery IDs
+        # Stacks signatures are 65 bytes in VRS format.
+        # The first byte encodes the recovery ID:
+        #   Leather / stacks.js compressed key: recovery_id = first_byte - 31
+        #   i.e. 0x1f (31) → recovery_id 0, 0x20 (32) → recovery_id 1
+        # We decode it when it's in the expected range; otherwise fall back to
+        # trying all recovery IDs (0-3).
         if len(sig_bytes) == 65:
             first_byte = sig_bytes[0]
-            r_s_bytes = sig_bytes[1:]  # Last 64 bytes are r+s
-            
+            r_s_bytes = sig_bytes[1:]  # 64 bytes r+s
+
             print(f"✅ 65-byte signature detected")
             print(f"   First byte: {first_byte} (0x{first_byte:02x})")
-            print(f"   Will try all recovery IDs (0-3)")
-            
+
+            # Compressed key convention: 31 = recid 0, 32 = recid 1
+            if first_byte in (31, 32):
+                recovery_id = first_byte - 31
+                print(f"   Decoded recovery_id: {recovery_id} (compressed key)")
+            else:
+                recovery_id = None  # Try all
+                print(f"   Non-standard first byte — will try all recovery IDs (0-3)")
+
             return {
                 'signature': r_s_bytes,
-                'recovery_id': None  # Try all recovery IDs
+                'recovery_id': recovery_id,
             }
         
         # Check for raw RS format (64 bytes) - less common
