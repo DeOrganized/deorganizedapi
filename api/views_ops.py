@@ -515,7 +515,7 @@ def ops_upload(request):
             return JsonResponse({'error': 'No files provided.'}, status=400)
 
         resp = http_requests.post(
-            f"{DCPE_BASE()}/api/upload/",
+            f"{DCPE_BASE()}/api/folder-upload/",
             files=files,
             data={'folder': folder_name},
             headers=DCPE_HEADERS(),
