@@ -153,27 +153,8 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS Settings
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    # Known production origins are hardcoded as defaults.
-    # Add extras via CORS_ALLOWED_ORIGINS env var (comma-separated, no trailing slashes).
-    _hardcoded_origins = [
-        'https://deorganized.com',
-        'https://www.deorganized.com',
-        'https://deorganized.vercel.app',
-    ]
-    _extra_origins = [
-        o.strip().rstrip('/')
-        for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
-        if o.strip()
-    ]
-    CORS_ALLOWED_ORIGINS = list(set(_hardcoded_origins + _extra_origins))
-    # Allow any Vercel preview deploy for this project
-    CORS_ALLOWED_ORIGIN_REGEXES = [
-        r'^https://deorganized.*\.vercel\.app$',
-    ]
+# CORS Settings — open for now, lock down post-launch with CORS_ALLOWED_ORIGINS env var
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = [
     'payment-required',

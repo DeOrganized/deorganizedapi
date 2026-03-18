@@ -292,8 +292,15 @@ class UserViewSet(viewsets.ModelViewSet):
         else:
             logger.warning(f"[wallet_login] No signature for {wallet_address} — grace period active")
 
-        try:
-            user = User.objects.get(stacks_address=wallet_address)
+        matching_users = User.objects.filter(stacks_address=wallet_address).order_by('date_joined')
+        if matching_users.exists():
+            user = matching_users.first()
+            # Clean up any duplicate accounts created during setup loops
+            duplicates = matching_users.exclude(pk=user.pk)
+            if duplicates.exists():
+                dup_ids = list(duplicates.values_list('id', flat=True))
+                logger.warning(f"[wallet_login] Removing {len(dup_ids)} duplicate(s) for {wallet_address}: {dup_ids}")
+                duplicates.delete()
             logger.info(f"Existing user: {user.username}")
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -304,7 +311,7 @@ class UserViewSet(viewsets.ModelViewSet):
                     'refresh': str(refresh),
                 }
             })
-        except User.DoesNotExist:
+        else:
             logger.info(f"New wallet: {wallet_address}")
             return Response({'is_new': True})
 
