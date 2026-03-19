@@ -1193,6 +1193,73 @@ def agent_chat(request):
         return _proxy_error(exc, context="Agent")
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def agent_status(request):
+    """GET /api/agent/status/ — Long Elio agent identity, registration, and memory stats."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/status",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def agent_memory(request):
+    """GET /api/agent/memory/ — Long Elio memory (people, learnings, market signals)."""
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/memory",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def agent_conversations(request):
+    """GET /api/agent/conversations/ — Long Elio conversation log (paginated)."""
+    try:
+        params = {}
+        if request.GET.get('page'):
+            params['page'] = request.GET['page']
+        if request.GET.get('limit'):
+            params['limit'] = request.GET['limit']
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/conversations",
+            headers=AGENT_HEADERS(),
+            params=params,
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def agent_train(request):
+    """POST /api/agent/train/ — inject a learning, person note, or market summary into Elio's memory."""
+    try:
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/train",
+            headers=AGENT_HEADERS(),
+            json=request.data,
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
 # ---------------------------------------------------------------------------
 # Social Agent Endpoints
 # ---------------------------------------------------------------------------

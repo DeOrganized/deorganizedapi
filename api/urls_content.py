@@ -25,6 +25,10 @@ urlpatterns = [
     # Long Elio Agent
     path('agent/wallet/',                            views_ops.agent_wallet,        name='agent_wallet'),
     path('agent/chat/',                              views_ops.agent_chat,          name='agent_chat'),
+    path('agent/status/',                            views_ops.agent_status,        name='agent_status'),
+    path('agent/memory/',                            views_ops.agent_memory,        name='agent_memory'),
+    path('agent/conversations/',                     views_ops.agent_conversations, name='agent_conversations'),
+    path('agent/train/',                             views_ops.agent_train,         name='agent_train'),
 
     # Social Agent
     path('agent/social/wallet/',                     views_ops.social_wallet,          name='social_wallet'),
