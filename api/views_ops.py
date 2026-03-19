@@ -1134,9 +1134,9 @@ def content_history(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def content_thumbnail(request, date, format):
-    """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use."""
+    """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use. No auth required (key added server-side)."""
     from django.http import HttpResponse
     try:
         resp = http_requests.get(
