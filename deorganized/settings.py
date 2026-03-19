@@ -202,12 +202,12 @@ REST_FRAMEWORK = {
         'rest_framework.filters.OrderingFilter',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+        'api.throttles.StaffExemptAnonThrottle',
+        'api.throttles.StaffExemptUserThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '200/day',
-        'user': '2000/day',
+        'user': '120/minute',  # burst-safe for pages that fire 15-20 parallel requests on mount
         'auth': '10/minute',   # applied to login / registration endpoints
     },
 }
