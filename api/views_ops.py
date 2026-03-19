@@ -1226,6 +1226,21 @@ def social_run_stacks(request):
         return _proxy_error(exc, context="Social")
 
 
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def social_logs(request):
+    """GET /api/agent/social/logs/ — in-memory log buffer snapshot from the social agent."""
+    try:
+        resp = http_requests.get(
+            f"{SOCIAL_BASE()}/api/logs",
+            headers=AGENT_HEADERS(),
+            timeout=10,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
 # ---------------------------------------------------------------------------
 # Admin Content Generation Endpoints (no DAP credits — direct agent trigger)
 # ---------------------------------------------------------------------------
