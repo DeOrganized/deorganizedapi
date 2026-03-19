@@ -1183,6 +1183,50 @@ def social_transactions(request):
 
 
 # ---------------------------------------------------------------------------
+# Social Agent Run Endpoints (admin-only cycle triggers)
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def social_run_news(request):
+    """
+    POST /api/agent/social/run-news/ — trigger a news-package cycle on the social agent.
+    Proxies to SOCIAL_BASE /api/run with serviceType=news-package.
+    Passes 409 through so callers can detect a cycle already in progress.
+    """
+    try:
+        resp = http_requests.post(
+            f"{SOCIAL_BASE()}/api/run",
+            json={"serviceType": "news-package"},
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def social_run_stacks(request):
+    """
+    POST /api/agent/social/run-stacks/ — trigger a stacks-package cycle on the social agent.
+    Proxies to SOCIAL_BASE /api/run with serviceType=stacks-package.
+    Passes 409 through so callers can detect a cycle already in progress.
+    """
+    try:
+        resp = http_requests.post(
+            f"{SOCIAL_BASE()}/api/run",
+            json={"serviceType": "stacks-package"},
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
+# ---------------------------------------------------------------------------
 # Admin Content Generation Endpoints (no DAP credits — direct agent trigger)
 # ---------------------------------------------------------------------------
 
