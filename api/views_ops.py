@@ -973,6 +973,81 @@ def dap_grant(request):
         return _proxy_error(exc, context="DAP")
 
 
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def admin_dap_deduct(request):
+    """
+    POST /api/admin/dap/deduct/ — admin deduct DAP credits from a user.
+    Body: { stacks_address, amount, description }
+    Returns { success, new_balance, amount, description }
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        stacks_address = body.get('stacks_address', '').strip()
+        amount = body.get('amount')
+        description = body.get('description', 'Admin deduction')
+
+        if not stacks_address or not amount:
+            return JsonResponse({'error': 'stacks_address and amount are required'}, status=400)
+
+        try:
+            amount = int(amount)
+            if amount <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            return JsonResponse({'error': 'amount must be a positive integer'}, status=400)
+
+        # Deduct
+        deduct_resp = http_requests.post(
+            f"{DAP_BASE()}/api/credits/deduct",
+            json={'stacks_address': stacks_address, 'amount': amount,
+                  'service_name': 'admin-adjustment', 'description': description},
+            headers=AGENT_HEADERS(),
+            timeout=15,
+        )
+        if deduct_resp.status_code not in (200, 201):
+            logger.error(f"[admin_dap_deduct] deduct failed {deduct_resp.status_code}: {deduct_resp.text[:200]}")
+            return JsonResponse(
+                {'error': f'DAP deduct failed ({deduct_resp.status_code}): {deduct_resp.text[:100]}'},
+                status=deduct_resp.status_code,
+            )
+
+        # Fetch new balance
+        new_balance = None
+        try:
+            bal_resp = http_requests.get(
+                f"{DAP_BASE()}/api/users/{stacks_address}/balance",
+                headers=AGENT_HEADERS(),
+                timeout=10,
+            )
+            if bal_resp.ok:
+                new_balance = bal_resp.json().get('balance')
+        except Exception:
+            pass
+
+        # Record event for target user
+        try:
+            from django.contrib.auth import get_user_model
+            from users.models import DappPointEvent
+            User = get_user_model()
+            target_user = User.objects.filter(stacks_address=stacks_address).first()
+            if target_user:
+                DappPointEvent.objects.create(
+                    user=target_user,
+                    action='admin_dap_deduct',
+                    points=-abs(amount),
+                    description=f'Admin deduction: {description}',
+                    is_read=False,
+                )
+        except Exception as e:
+            logger.warning(f"[admin_dap_deduct] DappPointEvent creation failed: {e}")
+
+        logger.info(f"[admin_dap_deduct] {request.user.username} deducted {amount} credits from {stacks_address}: {description}")
+        return JsonResponse({'success': True, 'new_balance': new_balance, 'amount': amount, 'description': description})
+    except Exception as exc:
+        return _proxy_error(exc, context="DAP")
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dap_transactions(request, address):
