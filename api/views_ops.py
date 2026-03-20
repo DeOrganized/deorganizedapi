@@ -64,6 +64,11 @@ def _is_platform_staff(user):
     return user.groups.filter(name__in=['platform_admin', 'production_staff']).exists()
 
 
+def _user_stacks_address(user):
+    """Return the authenticated user's linked Stacks address, or None."""
+    return getattr(user, 'stacks_address', None)
+
+
 def require_active_subscription(view_func):
     """Decorator that blocks free-plan users from DCPE write endpoints.
     Platform staff and superusers are exempt — they don't need a subscription.
@@ -843,6 +848,10 @@ def dap_register(request):
 @permission_classes([IsAuthenticated])
 def dap_balance(request, address):
     """GET /api/dap/balance/<address>/ — DAP credit balance for a Stacks address."""
+    user_address = _user_stacks_address(request.user)
+    if address != user_address and not _is_platform_staff(request.user):
+        return JsonResponse({"error": "Not authorized to view this wallet"}, status=403)
+
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/users/{address}/balance",
@@ -864,6 +873,10 @@ def dap_deduct(request):
     """
     try:
         body = json.loads(request.body) if request.body else {}
+        requested_address = body.get('stacks_address', '')
+        user_address = _user_stacks_address(request.user)
+        if requested_address != user_address and not _is_platform_staff(request.user):
+            return JsonResponse({"error": "Not authorized to deduct from this wallet"}, status=403)
         resp = http_requests.post(
             f"{DAP_BASE()}/api/credits/deduct",
             json=body,
@@ -1054,6 +1067,10 @@ def admin_dap_deduct(request):
 @permission_classes([IsAuthenticated])
 def dap_transactions(request, address):
     """GET /api/dap/transactions/<address>/ — DAP credit transaction history."""
+    user_address = _user_stacks_address(request.user)
+    if address != user_address and not _is_platform_staff(request.user):
+        return JsonResponse({"error": "Not authorized to view this wallet"}, status=403)
+
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/users/{address}/transactions",
