@@ -1139,25 +1139,30 @@ def content_history(request):
         return _proxy_error(exc, context="Agent")
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
 def content_thumbnail(request, date, format):
-    """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use. No auth required (key added server-side)."""
+    """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use.
+    No DRF wrapper — plain Django view so binary streaming isn't mangled by DRF content negotiation.
+    Auth is added server-side via ?key= query param, matching the agent's expected call pattern.
+    """
     from django.http import HttpResponse
+    agent_key = os.environ.get('AGENT_API_KEY', '')
+    url = f"{AGENT_BASE()}/news/thumbnail/{date}/{format}"
+    logger.debug(f"[thumbnail] Proxying {date}/{format} → {url}")
     try:
         resp = http_requests.get(
-            f"{AGENT_BASE()}/news/thumbnail/{date}/{format}",
-            params={"key": os.environ.get('AGENT_API_KEY', '')},
-            headers=AGENT_HEADERS(),
+            url,
+            params={"key": agent_key},
             timeout=30,
         )
+        logger.debug(f"[thumbnail] Agent responded {resp.status_code} ({len(resp.content)} bytes)")
         return HttpResponse(
             resp.content,
             content_type=resp.headers.get('content-type', 'image/png'),
             status=resp.status_code,
         )
     except Exception as exc:
-        return _proxy_error(exc, context="Agent")
+        logger.error(f"[thumbnail] Proxy error for {date}/{format}: {exc}")
+        return HttpResponse(status=502)
 
 
 # ---------------------------------------------------------------------------
