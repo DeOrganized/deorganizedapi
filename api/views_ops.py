@@ -16,8 +16,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from django.core.cache import cache
 
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
+from api.throttles import PublicChatThrottle
 from users.permissions import production_staff_required
 
 logger = logging.getLogger(__name__)
@@ -1100,9 +1101,9 @@ def content_status(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def content_latest(request):
-    """GET /api/content/latest/ — latest generated content package."""
+    """GET /api/content/latest/ — latest generated content package. Public — content is not sensitive."""
     try:
         resp = http_requests.get(
             f"{AGENT_BASE()}/news/latest",
@@ -1464,6 +1465,61 @@ def content_generate_stacks(request):
             payload['additionalLinks'] = body['additionalLinks']
         resp = http_requests.post(
             f"{AGENT_BASE()}/news/run-stacks",
+            json=payload,
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+# ---------------------------------------------------------------------------
+# Public Agent Endpoints — no auth required (for /agents showcase page)
+# ---------------------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_agent_wallet(request):
+    """GET /api/public/agent/wallet/ — Elio's public wallet addresses and balances.
+    No auth required — addresses are on-chain and publicly visible anyway.
+    API key is added server-side so the browser never sees it.
+    """
+    try:
+        resp = http_requests.get(
+            f"{AGENT_BASE()}/wallet",
+            headers=AGENT_HEADERS(),
+            timeout=30,
+        )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Agent")
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicChatThrottle])
+def public_agent_chat(request):
+    """POST /api/public/agent/chat/ — send a message to Long Elio without logging in.
+    Rate-limited to 5 requests/minute per IP. API key added server-side.
+    Used on the public /agents showcase page for judges and visitors.
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+        if not body.get('message'):
+            return JsonResponse({"error": "message is required"}, status=400)
+        # Use the visitor's IP as a display identifier for Elio's context
+        ip = (
+            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+            or request.META.get('REMOTE_ADDR', 'visitor')
+        )
+        payload = {
+            "message": body["message"],
+            "userId": f"visitor-{ip}",
+            "userName": body.get("userName", "Visitor"),
+        }
+        resp = http_requests.post(
+            f"{AGENT_BASE()}/chat",
             json=payload,
             headers=AGENT_HEADERS(),
             timeout=30,

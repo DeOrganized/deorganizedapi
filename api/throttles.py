@@ -1,6 +1,11 @@
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 
 
+class PublicChatThrottle(AnonRateThrottle):
+    """5 requests/minute per IP for the unauthenticated Elio chat endpoint."""
+    scope = 'public_chat'
+
+
 class StaffExemptUserThrottle(UserRateThrottle):
     """UserRateThrottle that lets staff/admin users through unconditionally."""
 

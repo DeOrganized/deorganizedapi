@@ -44,4 +44,8 @@ urlpatterns = [
     path('content/generate-admin/',                  views_ops.content_generate_admin,   name='content_generate_admin'),
     path('content/generate-stacks/',                 views_ops.content_generate_stacks,  name='content_generate_stacks'),
 
+    # Public endpoints — no auth required (showcase /agents page)
+    path('public/agent/wallet/',                     views_ops.public_agent_wallet,      name='public_agent_wallet'),
+    path('public/agent/chat/',                       views_ops.public_agent_chat,        name='public_agent_chat'),
+
 ]

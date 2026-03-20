@@ -209,6 +209,7 @@ REST_FRAMEWORK = {
         'anon': '200/day',
         'user': '120/minute',  # burst-safe for pages that fire 15-20 parallel requests on mount
         'auth': '10/minute',   # applied to login / registration endpoints
+        'public_chat': '5/minute',  # unauthenticated Elio chat on /agents page
     },
 }
 
