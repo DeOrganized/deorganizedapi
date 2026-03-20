@@ -1109,7 +1109,13 @@ def content_latest(request):
             headers=AGENT_HEADERS(),
             timeout=30,
         )
-        return JsonResponse(resp.json(), status=resp.status_code)
+        data = resp.json()
+        # Ensure 'date' is present as YYYY-MM-DD — older packs may omit it.
+        # Derive from generatedAt if available, otherwise use today (UTC).
+        if resp.status_code == 200 and not data.get('date'):
+            generated_at = data.get('generatedAt', '')
+            data['date'] = generated_at[:10] if generated_at else __import__('datetime').date.today().isoformat()
+        return JsonResponse(data, status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="Agent")
 
@@ -1363,6 +1369,29 @@ def social_run_stacks(request):
             headers=AGENT_HEADERS(),
             timeout=30,
         )
+        return JsonResponse(resp.json(), status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context="Social")
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def social_config(request):
+    """GET/POST /api/agent/social/config/ — read or update runtime skip flags on the social agent."""
+    try:
+        if request.method == 'GET':
+            resp = http_requests.get(
+                f"{SOCIAL_BASE()}/api/config",
+                headers=AGENT_HEADERS(),
+                timeout=10,
+            )
+        else:
+            resp = http_requests.post(
+                f"{SOCIAL_BASE()}/api/config",
+                json=request.data,
+                headers=AGENT_HEADERS(),
+                timeout=10,
+            )
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="Social")

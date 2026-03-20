@@ -37,6 +37,7 @@ urlpatterns = [
     path('agent/social/transactions/',               views_ops.social_transactions,    name='social_transactions'),
     path('agent/social/run-news/',                   views_ops.social_run_news,        name='social_run_news'),
     path('agent/social/run-stacks/',                 views_ops.social_run_stacks,      name='social_run_stacks'),
+    path('agent/social/config/',                     views_ops.social_config,          name='social_config'),
     path('agent/social/logs/',                       views_ops.social_logs,            name='social_logs'),
 
     # Admin Content Generation (direct trigger, no DAP credits)
