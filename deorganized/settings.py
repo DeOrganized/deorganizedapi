@@ -153,8 +153,24 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS Settings — open for now, lock down post-launch with CORS_ALLOWED_ORIGINS env var
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Settings
+# In production, set CORS_ALLOWED_ORIGINS to a comma-separated list of allowed origins.
+# Example: https://deorganized.com,https://controller.deorganized.com,http://localhost:3000
+_cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+_cors_origins = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
+
+if _cors_origins:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = _cors_origins
+elif DEBUG:
+    # Dev fallback — allow all origins locally
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    raise RuntimeError(
+        'CORS_ALLOWED_ORIGINS environment variable must be set in production. '
+        'Example: https://deorganized.com,https://controller.deorganized.com'
+    )
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = [
     'payment-required',
