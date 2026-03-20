@@ -48,6 +48,7 @@ AGENT_BASE      = lambda: os.environ.get('AGENT_API_URL', '').rstrip('/')
 CONTROLLER_BASE = lambda: os.environ.get('AGENT_CONTROLLER_URL', '').rstrip('/')
 SOCIAL_BASE     = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
 AGENT_HEADERS   = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
+DAP_HEADERS     = lambda: {"Authorization": f"Bearer {os.environ.get('DAP_SERVICE_KEY', '')}"}
 
 
 def _proxy_error(exc, context="DCPE"):
@@ -387,7 +388,7 @@ def dcpe_creator_upload(request):
                 'service_name': 'playout-upload',
                 'description': f'Video upload: {f.name}',
             },
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         if deduct_resp.status_code == 402:
@@ -813,7 +814,7 @@ def dap_status(request):
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/status",
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -830,7 +831,7 @@ def dap_register(request):
         resp = http_requests.post(
             f"{DAP_BASE()}/api/users/register",
             json=body,
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -845,7 +846,7 @@ def dap_balance(request, address):
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/users/{address}/balance",
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -866,7 +867,7 @@ def dap_deduct(request):
         resp = http_requests.post(
             f"{DAP_BASE()}/api/credits/deduct",
             json=body,
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         # Track successful deductions as unread notifications
@@ -918,7 +919,7 @@ def dap_grant(request):
             http_requests.post(
                 f"{DAP_BASE()}/api/users/register",
                 json={'stacks_address': stacks_address},
-                headers=AGENT_HEADERS(),
+                headers=DAP_HEADERS(),
                 timeout=15,
             )
         except Exception as e:
@@ -928,7 +929,7 @@ def dap_grant(request):
         mint_resp = http_requests.post(
             f"{DAP_BASE()}/api/credits/mint",
             json={'stacks_address': stacks_address, 'amount': amount, 'description': description},
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         if mint_resp.status_code not in (200, 201):
@@ -943,7 +944,7 @@ def dap_grant(request):
         try:
             bal_resp = http_requests.get(
                 f"{DAP_BASE()}/api/users/{stacks_address}/balance",
-                headers=AGENT_HEADERS(),
+                headers=DAP_HEADERS(),
                 timeout=10,
             )
             if bal_resp.ok:
@@ -1003,7 +1004,7 @@ def admin_dap_deduct(request):
             f"{DAP_BASE()}/api/credits/deduct",
             json={'stacks_address': stacks_address, 'amount': amount,
                   'service_name': 'admin-adjustment', 'description': description},
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         if deduct_resp.status_code not in (200, 201):
@@ -1018,7 +1019,7 @@ def admin_dap_deduct(request):
         try:
             bal_resp = http_requests.get(
                 f"{DAP_BASE()}/api/users/{stacks_address}/balance",
-                headers=AGENT_HEADERS(),
+                headers=DAP_HEADERS(),
                 timeout=10,
             )
             if bal_resp.ok:
@@ -1056,7 +1057,7 @@ def dap_transactions(request, address):
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/users/{address}/transactions",
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)

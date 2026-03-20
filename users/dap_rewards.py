@@ -48,7 +48,7 @@ def _dap_base():
     return os.environ.get('DAP_SERVICE_URL', '').rstrip('/')
 
 def _dap_headers():
-    return {'X-API-Key': os.environ.get('AGENT_API_KEY', '')}
+    return {'Authorization': f"Bearer {os.environ.get('DAP_SERVICE_KEY', '')}"}
 
 
 def _dap_register(stacks_address: str) -> bool:
