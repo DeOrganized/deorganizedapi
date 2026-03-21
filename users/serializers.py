@@ -12,6 +12,12 @@ class UserSerializer(serializers.ModelSerializer):
     follower_count = serializers.IntegerField(read_only=True)
     following_count = serializers.IntegerField(read_only=True)
     is_creator = serializers.BooleanField(read_only=True)
+    community_slug = serializers.SerializerMethodField()
+
+    def get_community_slug(self, obj):
+        from communities.models import Membership
+        m = Membership.objects.filter(user=obj, role='founder').select_related('community').first()
+        return m.community.slug if m else None
 
     class Meta:
         model = User
@@ -21,6 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
             'website', 'twitter', 'instagram', 'youtube',
             'is_verified', 'date_joined',
             'follower_count', 'following_count', 'is_creator',
+            'community_slug',
         ]
         read_only_fields = ['id', 'date_joined', 'is_verified']
 
