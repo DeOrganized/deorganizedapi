@@ -1162,16 +1162,14 @@ def content_history(request):
 def content_thumbnail(request, date, format):
     """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use.
     No DRF wrapper — plain Django view so binary streaming isn't mangled by DRF content negotiation.
-    Auth is added server-side via ?key= query param, matching the agent's expected call pattern.
     """
     from django.http import HttpResponse
-    agent_key = os.environ.get('AGENT_API_KEY', '')
     url = f"{AGENT_BASE()}/news/thumbnail/{date}/{format}"
     logger.debug(f"[thumbnail] Proxying {date}/{format} → {url}")
     try:
         resp = http_requests.get(
             url,
-            params={"key": agent_key},
+            headers=AGENT_HEADERS(),
             timeout=30,
         )
         logger.debug(f"[thumbnail] Agent responded {resp.status_code} ({len(resp.content)} bytes)")
