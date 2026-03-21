@@ -18,7 +18,7 @@ class MembershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = Membership
         fields = ['id', 'user', 'community', 'role', 'joined_at']
-        read_only_fields = ['id', 'user', 'joined_at']
+        read_only_fields = ['id', 'user', 'community', 'joined_at']
 
 
 class CommunitySerializer(serializers.ModelSerializer):
