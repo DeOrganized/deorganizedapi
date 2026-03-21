@@ -47,8 +47,9 @@ DAP_BASE        = lambda: os.environ.get('DAP_SERVICE_URL', '').rstrip('/')
 AGENT_BASE      = lambda: os.environ.get('AGENT_API_URL', '').rstrip('/')
 CONTROLLER_BASE = lambda: os.environ.get('AGENT_CONTROLLER_URL', '').rstrip('/')
 SOCIAL_BASE     = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
-AGENT_HEADERS   = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
-DAP_HEADERS     = lambda: {"Authorization": f"Bearer {os.environ.get('DAP_SERVICE_KEY', '')}"}
+AGENT_HEADERS      = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
+DAP_HEADERS        = lambda: {"Authorization": f"Bearer {os.environ.get('DAP_SERVICE_KEY', '')}"}
+CONTROLLER_HEADERS = lambda: {"Authorization": f"Bearer {os.environ.get('CONTROLLER_SERVICE_KEY', '')}"}
 
 
 def _proxy_error(exc, context="DCPE"):
@@ -1095,7 +1096,7 @@ def content_generate(request):
         resp = http_requests.post(
             f"{CONTROLLER_BASE()}/api/generate",
             json=body,
-            headers=AGENT_HEADERS(),
+            headers=CONTROLLER_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
