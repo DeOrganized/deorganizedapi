@@ -47,7 +47,9 @@ DAP_BASE        = lambda: os.environ.get('DAP_SERVICE_URL', '').rstrip('/')
 AGENT_BASE      = lambda: os.environ.get('AGENT_API_URL', '').rstrip('/')
 CONTROLLER_BASE = lambda: os.environ.get('AGENT_CONTROLLER_URL', '').rstrip('/')
 SOCIAL_BASE     = lambda: os.environ.get('SOCIAL_AGENT_URL', '').rstrip('/')
-AGENT_HEADERS   = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
+AGENT_HEADERS      = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
+DAP_HEADERS        = lambda: {"Authorization": f"Bearer {os.environ.get('DAP_SERVICE_KEY', '')}"}
+CONTROLLER_HEADERS = lambda: {"Authorization": f"Bearer {os.environ.get('CONTROLLER_SERVICE_KEY', '')}"}
 
 
 def _proxy_error(exc, context="DCPE"):
@@ -61,6 +63,11 @@ def _is_platform_staff(user):
     if user.is_superuser:
         return True
     return user.groups.filter(name__in=['platform_admin', 'production_staff']).exists()
+
+
+def _user_stacks_address(user):
+    """Return the authenticated user's linked Stacks address, or None."""
+    return getattr(user, 'stacks_address', None)
 
 
 def require_active_subscription(view_func):
@@ -387,7 +394,7 @@ def dcpe_creator_upload(request):
                 'service_name': 'playout-upload',
                 'description': f'Video upload: {f.name}',
             },
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         if deduct_resp.status_code == 402:
@@ -813,7 +820,7 @@ def dap_status(request):
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/status",
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -830,7 +837,7 @@ def dap_register(request):
         resp = http_requests.post(
             f"{DAP_BASE()}/api/users/register",
             json=body,
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -842,10 +849,14 @@ def dap_register(request):
 @permission_classes([IsAuthenticated])
 def dap_balance(request, address):
     """GET /api/dap/balance/<address>/ — DAP credit balance for a Stacks address."""
+    user_address = _user_stacks_address(request.user)
+    if address != user_address and not _is_platform_staff(request.user):
+        return JsonResponse({"error": "Not authorized to view this wallet"}, status=403)
+
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/users/{address}/balance",
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -863,10 +874,14 @@ def dap_deduct(request):
     """
     try:
         body = json.loads(request.body) if request.body else {}
+        requested_address = body.get('stacks_address', '')
+        user_address = _user_stacks_address(request.user)
+        if requested_address != user_address and not _is_platform_staff(request.user):
+            return JsonResponse({"error": "Not authorized to deduct from this wallet"}, status=403)
         resp = http_requests.post(
             f"{DAP_BASE()}/api/credits/deduct",
             json=body,
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         # Track successful deductions as unread notifications
@@ -918,7 +933,7 @@ def dap_grant(request):
             http_requests.post(
                 f"{DAP_BASE()}/api/users/register",
                 json={'stacks_address': stacks_address},
-                headers=AGENT_HEADERS(),
+                headers=DAP_HEADERS(),
                 timeout=15,
             )
         except Exception as e:
@@ -928,7 +943,7 @@ def dap_grant(request):
         mint_resp = http_requests.post(
             f"{DAP_BASE()}/api/credits/mint",
             json={'stacks_address': stacks_address, 'amount': amount, 'description': description},
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         if mint_resp.status_code not in (200, 201):
@@ -943,7 +958,7 @@ def dap_grant(request):
         try:
             bal_resp = http_requests.get(
                 f"{DAP_BASE()}/api/users/{stacks_address}/balance",
-                headers=AGENT_HEADERS(),
+                headers=DAP_HEADERS(),
                 timeout=10,
             )
             if bal_resp.ok:
@@ -1003,7 +1018,7 @@ def admin_dap_deduct(request):
             f"{DAP_BASE()}/api/credits/deduct",
             json={'stacks_address': stacks_address, 'amount': amount,
                   'service_name': 'admin-adjustment', 'description': description},
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=15,
         )
         if deduct_resp.status_code not in (200, 201):
@@ -1018,7 +1033,7 @@ def admin_dap_deduct(request):
         try:
             bal_resp = http_requests.get(
                 f"{DAP_BASE()}/api/users/{stacks_address}/balance",
-                headers=AGENT_HEADERS(),
+                headers=DAP_HEADERS(),
                 timeout=10,
             )
             if bal_resp.ok:
@@ -1053,10 +1068,14 @@ def admin_dap_deduct(request):
 @permission_classes([IsAuthenticated])
 def dap_transactions(request, address):
     """GET /api/dap/transactions/<address>/ — DAP credit transaction history."""
+    user_address = _user_stacks_address(request.user)
+    if address != user_address and not _is_platform_staff(request.user):
+        return JsonResponse({"error": "Not authorized to view this wallet"}, status=403)
+
     try:
         resp = http_requests.get(
             f"{DAP_BASE()}/api/users/{address}/transactions",
-            headers=AGENT_HEADERS(),
+            headers=DAP_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -1077,7 +1096,7 @@ def content_generate(request):
         resp = http_requests.post(
             f"{CONTROLLER_BASE()}/api/generate",
             json=body,
-            headers=AGENT_HEADERS(),
+            headers=CONTROLLER_HEADERS(),
             timeout=30,
         )
         return JsonResponse(resp.json(), status=resp.status_code)
@@ -1143,16 +1162,14 @@ def content_history(request):
 def content_thumbnail(request, date, format):
     """GET /api/content/thumbnail/<date>/<format>/ — pipe thumbnail binary for img tag use.
     No DRF wrapper — plain Django view so binary streaming isn't mangled by DRF content negotiation.
-    Auth is added server-side via ?key= query param, matching the agent's expected call pattern.
     """
     from django.http import HttpResponse
-    agent_key = os.environ.get('AGENT_API_KEY', '')
     url = f"{AGENT_BASE()}/news/thumbnail/{date}/{format}"
     logger.debug(f"[thumbnail] Proxying {date}/{format} → {url}")
     try:
         resp = http_requests.get(
             url,
-            params={"key": agent_key},
+            headers=AGENT_HEADERS(),
             timeout=30,
         )
         logger.debug(f"[thumbnail] Agent responded {resp.status_code} ({len(resp.content)} bytes)")
