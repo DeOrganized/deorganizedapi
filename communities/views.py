@@ -136,8 +136,8 @@ class CommunityViewSet(viewsets.ModelViewSet):
 
         community = self.get_object()
         queryset = Show.objects.filter(
-            community=community, status='published'
-        ).select_related('creator')
+            community=community
+        ).exclude(status='archived').select_related('creator')
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = ShowListSerializer(page, many=True, context={'request': request})
