@@ -50,7 +50,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating/editing posts"""
     class Meta:
         model = Post
-        fields = ['content', 'image', 'is_premium', 'price_stx', 'price_usdcx']
+        fields = ['content', 'image', 'is_premium', 'price_stx', 'price_usdcx', 'community']
 
     def validate_content(self, value):
         if not value or not value.strip():
