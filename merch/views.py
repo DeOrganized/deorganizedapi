@@ -7,6 +7,7 @@ from users.permissions import HasPaidSubscription
 from payments.decorators import x402_required
 from django.conf import settings
 from django.shortcuts import get_object_or_404
+from communities.mixins import CommunityWriteMixin
 
 class IsCreatorOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -19,7 +20,8 @@ class IsCreatorOrReadOnly(permissions.BasePermission):
             return True
         return obj.creator == request.user
 
-class MerchViewSet(viewsets.ModelViewSet):
+class MerchViewSet(CommunityWriteMixin, viewsets.ModelViewSet):
+    community_write_role = 'admin'
     queryset = Merch.objects.filter(is_active=True)
     serializer_class = MerchSerializer
     def get_permissions(self):

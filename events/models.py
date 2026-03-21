@@ -23,7 +23,14 @@ class Event(models.Model):
         on_delete=models.CASCADE,
         related_name='organized_events'
     )
-    
+    community = models.ForeignKey(
+        'communities.Community',
+        on_delete=models.SET_NULL,
+        related_name='events',
+        null=True,
+        blank=True
+    )
+
     # Scheduling
     start_datetime = models.DateTimeField(blank=True, null=True, help_text="Required for one-off events, optional for recurring")
     end_datetime = models.DateTimeField(blank=True, null=True, help_text="Required for one-off events, optional for recurring")

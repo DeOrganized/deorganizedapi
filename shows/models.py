@@ -74,7 +74,14 @@ class Show(models.Model):
         related_name='shows',
         limit_choices_to={'role': 'creator'}
     )
-    
+    community = models.ForeignKey(
+        'communities.Community',
+        on_delete=models.SET_NULL,
+        related_name='shows',
+        null=True,
+        blank=True
+    )
+
     # Tags for categorization
     tags = models.ManyToManyField(Tag, related_name='shows', blank=True)
     

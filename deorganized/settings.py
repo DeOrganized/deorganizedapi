@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'merch',
     'payments',
     'messaging',
+    'communities',
 ]
 
 # Custom User Model

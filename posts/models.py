@@ -18,6 +18,14 @@ class Post(models.Model):
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
     is_pinned = models.BooleanField(default=False)
     
+    community = models.ForeignKey(
+        'communities.Community',
+        on_delete=models.SET_NULL,
+        related_name='posts',
+        null=True,
+        blank=True
+    )
+
     # Premium Gating
     is_premium = models.BooleanField(default=False)
     price_stx = models.BigIntegerField(default=0, help_text="Price in microSTX")
