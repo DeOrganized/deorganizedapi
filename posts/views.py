@@ -6,10 +6,12 @@ from django.db.models import Count, Exists, OuterRef, Subquery
 from .models import Post
 from .serializers import PostSerializer, PostCreateSerializer
 from payments.decorators import x402_required
+from communities.mixins import CommunityWriteMixin
 from django.conf import settings
 
 
-class PostViewSet(viewsets.ModelViewSet):
+class PostViewSet(CommunityWriteMixin, viewsets.ModelViewSet):
+    community_write_role = 'member'
     """
     ViewSet for community posts / feed.
 

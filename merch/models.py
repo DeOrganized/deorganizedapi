@@ -12,6 +12,13 @@ class Merch(models.Model):
         related_name='merch_items',
         limit_choices_to={'role': 'creator'}
     )
+    community = models.ForeignKey(
+        'communities.Community',
+        on_delete=models.SET_NULL,
+        related_name='merch_items',
+        null=True,
+        blank=True
+    )
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=300, unique=True, blank=True)
     description = models.TextField()

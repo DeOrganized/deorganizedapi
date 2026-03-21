@@ -13,6 +13,7 @@ from .serializers import (
     GuestRequestSerializer, GuestRequestCreateSerializer, GuestRequestListSerializer
 )
 from api.permissions import IsCreatorOrReadOnly
+from communities.mixins import CommunityWriteMixin
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
@@ -53,7 +54,8 @@ class TagViewSet(viewsets.ReadOnlyModelViewSet):
         return obj
 
 
-class ShowViewSet(viewsets.ModelViewSet):
+class ShowViewSet(CommunityWriteMixin, viewsets.ModelViewSet):
+    community_write_role = 'moderator'
     """
     ViewSet for Show model with creator-only creation.
     

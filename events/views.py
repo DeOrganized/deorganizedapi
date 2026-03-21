@@ -9,9 +9,11 @@ from .serializers import (
     EventSerializer, EventListSerializer, EventCreateUpdateSerializer
 )
 from api.permissions import IsOwnerOrReadOnly
+from communities.mixins import CommunityWriteMixin
 
 
-class EventViewSet(viewsets.ModelViewSet):
+class EventViewSet(CommunityWriteMixin, viewsets.ModelViewSet):
+    community_write_role = 'moderator'
     """
     ViewSet for Event model.
     

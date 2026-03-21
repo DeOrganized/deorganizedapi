@@ -30,6 +30,7 @@ urlpatterns = [
     
     # API Routes
     path('api/', include('api.routers')),
+    path('api/', include('communities.urls')),
     path('api/', include('merch.urls')),
     path('api/messages/', include('messaging.urls')),
     
