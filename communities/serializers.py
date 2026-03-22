@@ -73,6 +73,28 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
         fields = ['name', 'description', 'avatar', 'banner', 'tier', 'website', 'twitter', 'agent_api_url']
 
 
+class AdminCommunitySerializer(CommunitySerializer):
+    """Extended serializer for staff admin views — adds post/show/event counts."""
+    post_count = serializers.SerializerMethodField()
+    show_count = serializers.SerializerMethodField()
+
+    def get_post_count(self, obj):
+        return getattr(obj, 'post_count_annotated', 0)
+
+    def get_show_count(self, obj):
+        return getattr(obj, 'show_count_annotated', 0)
+
+    # Skip per-request user queries — not relevant in admin context
+    def get_user_membership(self, obj):
+        return None
+
+    def get_user_is_following(self, obj):
+        return False
+
+    class Meta(CommunitySerializer.Meta):
+        fields = CommunitySerializer.Meta.fields + ['post_count', 'show_count']
+
+
 class MembershipWithCommunitySerializer(serializers.ModelSerializer):
     """Used by my_communities — full nested community object."""
     community = serializers.SerializerMethodField()

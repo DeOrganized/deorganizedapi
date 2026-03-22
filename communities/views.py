@@ -6,7 +6,7 @@ from django.db.models import Count, Prefetch
 from django.shortcuts import get_object_or_404
 from .models import Community, Membership, CommunityFollow
 from .serializers import (
-    CommunitySerializer, CommunityCreateSerializer,
+    CommunitySerializer, CommunityCreateSerializer, AdminCommunitySerializer,
     MembershipSerializer, MembershipWithCommunitySerializer,
 )
 from .permissions import CommunityRolePermission
@@ -32,13 +32,18 @@ class CommunityViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
-    ordering_fields = ['created_at', 'name']
+    ordering_fields = ['created_at', 'name', 'member_count_annotated']
     ordering = ['-created_at']
 
     def get_queryset(self):
         qs = Community.objects.all()
         if self.action == 'list':
             qs = qs.annotate(member_count_annotated=Count('memberships', distinct=True))
+            if self.request.user.is_authenticated and self.request.user.is_staff:
+                qs = qs.annotate(
+                    post_count_annotated=Count('posts', distinct=True),
+                    show_count_annotated=Count('shows', distinct=True),
+                )
         if self.action in ('retrieve', 'list'):
             qs = qs.prefetch_related(
                 Prefetch(
@@ -52,6 +57,9 @@ class CommunityViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
             return CommunityCreateSerializer
+        if self.action == 'list' and hasattr(self, 'request') \
+                and self.request.user.is_authenticated and self.request.user.is_staff:
+            return AdminCommunitySerializer
         return CommunitySerializer
 
     def get_permissions(self):
@@ -198,6 +206,42 @@ class CommunityViewSet(viewsets.ModelViewSet):
         users = [cf.user for cf in community.followers.select_related('user').all()]
         serializer = UserListSerializer(users, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def admin_stats(self, request):
+        """GET /api/communities/admin_stats/ — aggregate stats, staff only"""
+        if not request.user.is_staff:
+            return Response({'error': 'Staff access required'}, status=status.HTTP_403_FORBIDDEN)
+
+        from django.utils import timezone
+        from datetime import timedelta
+
+        total_communities = Community.objects.count()
+        total_memberships = Membership.objects.count()
+        communities_this_week = Community.objects.filter(
+            created_at__gte=timezone.now() - timedelta(days=7)
+        ).count()
+
+        most_active = (
+            Community.objects
+            .annotate(post_count=Count('posts', distinct=True))
+            .order_by('-post_count')
+            .first()
+        )
+        most_active_data = None
+        if most_active and most_active.post_count > 0:
+            most_active_data = {
+                'name': most_active.name,
+                'slug': most_active.slug,
+                'post_count': most_active.post_count,
+            }
+
+        return Response({
+            'total_communities': total_communities,
+            'total_memberships': total_memberships,
+            'communities_this_week': communities_this_week,
+            'most_active': most_active_data,
+        })
 
 
 class MembershipViewSet(viewsets.ModelViewSet):
