@@ -47,10 +47,16 @@ class PostSerializer(serializers.ModelSerializer):
 
 
 class PostCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/editing posts"""
+    """Serializer for creating/editing posts — returns full display fields on create"""
+    author = PostAuthorSerializer(read_only=True)
+
     class Meta:
         model = Post
-        fields = ['content', 'image', 'is_premium', 'price_stx', 'price_usdcx', 'community']
+        fields = [
+            'id', 'author', 'content', 'image', 'is_premium', 'price_stx', 'price_usdcx',
+            'community', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'author', 'created_at', 'updated_at']
 
     def validate_content(self, value):
         if not value or not value.strip():
