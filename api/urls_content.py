@@ -48,4 +48,15 @@ urlpatterns = [
     path('public/agent/wallet/',                     views_ops.public_agent_wallet,      name='public_agent_wallet'),
     path('public/agent/chat/',                       views_ops.public_agent_chat,        name='public_agent_chat'),
 
+    # Link Tracker Service
+    path('link-tracker/partners/',                       views_ops.lt_partners,            name='lt_partners'),
+    path('link-tracker/partners/<int:partner_id>/',      views_ops.lt_partner_detail,      name='lt_partner_detail'),
+    path('link-tracker/links/',                          views_ops.lt_links,               name='lt_links'),
+    path('link-tracker/links/<int:link_id>/',            views_ops.lt_link_detail,         name='lt_link_detail'),
+    path('link-tracker/links/<str:shortcode>/stats/',    views_ops.lt_link_stats,          name='lt_link_stats'),
+    path('link-tracker/analytics/',                      views_ops.lt_analytics,           name='lt_analytics'),
+    path('link-tracker/analytics/export/',               views_ops.lt_analytics_export,    name='lt_analytics_export'),
+    path('link-tracker/keys/',                           views_ops.lt_keys,                name='lt_keys'),
+    path('link-tracker/keys/<int:key_id>/',              views_ops.lt_key_detail,          name='lt_key_detail'),
+
 ]

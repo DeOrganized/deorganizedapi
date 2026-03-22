@@ -51,6 +51,9 @@ AGENT_HEADERS      = lambda: {"X-API-Key": os.environ.get('AGENT_API_KEY', '')}
 DAP_HEADERS        = lambda: {"Authorization": f"Bearer {os.environ.get('DAP_SERVICE_KEY', '')}"}
 CONTROLLER_HEADERS = lambda: {"Authorization": f"Bearer {os.environ.get('CONTROLLER_SERVICE_KEY', '')}"}
 
+LINK_TRACKER_BASE    = lambda: os.environ.get('LINK_TRACKER_URL', '').rstrip('/')
+LINK_TRACKER_HEADERS = lambda: {"X-API-Key": os.environ.get('LINK_TRACKER_API_KEY', '')}
+
 
 def _proxy_error(exc, context="DCPE"):
     """Return a consistent error JsonResponse for proxy failures."""
@@ -1544,4 +1547,200 @@ def public_agent_chat(request):
         return JsonResponse(resp.json(), status=resp.status_code)
     except Exception as exc:
         return _proxy_error(exc, context="Agent")
+
+
+# ── Link Tracker Proxy Views ───────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def lt_partners(request):
+    """GET/POST /api/link-tracker/partners/"""
+    try:
+        if request.method == 'GET':
+            resp = http_requests.get(
+                f"{LINK_TRACKER_BASE()}/api/partners",
+                headers=LINK_TRACKER_HEADERS(),
+                timeout=15,
+            )
+        else:
+            resp = http_requests.post(
+                f"{LINK_TRACKER_BASE()}/api/partners",
+                json=json.loads(request.body) if request.body else {},
+                headers={**LINK_TRACKER_HEADERS(), 'Content-Type': 'application/json'},
+                timeout=15,
+            )
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def lt_partner_detail(request, partner_id):
+    """PUT/DELETE /api/link-tracker/partners/<partner_id>/"""
+    from django.http import HttpResponse
+    try:
+        if request.method == 'PUT':
+            resp = http_requests.put(
+                f"{LINK_TRACKER_BASE()}/api/partners/{partner_id}",
+                json=json.loads(request.body) if request.body else {},
+                headers={**LINK_TRACKER_HEADERS(), 'Content-Type': 'application/json'},
+                timeout=15,
+            )
+        else:
+            resp = http_requests.delete(
+                f"{LINK_TRACKER_BASE()}/api/partners/{partner_id}",
+                headers=LINK_TRACKER_HEADERS(),
+                timeout=15,
+            )
+        if resp.status_code == 204:
+            return HttpResponse(status=204)
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def lt_links(request):
+    """GET/POST /api/link-tracker/links/"""
+    try:
+        params = {k: v for k, v in request.GET.items()}
+        if request.method == 'GET':
+            resp = http_requests.get(
+                f"{LINK_TRACKER_BASE()}/api/links",
+                headers=LINK_TRACKER_HEADERS(),
+                params=params,
+                timeout=15,
+            )
+        else:
+            resp = http_requests.post(
+                f"{LINK_TRACKER_BASE()}/api/links",
+                json=json.loads(request.body) if request.body else {},
+                headers={**LINK_TRACKER_HEADERS(), 'Content-Type': 'application/json'},
+                timeout=15,
+            )
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAdminUser])
+def lt_link_detail(request, link_id):
+    """PUT/DELETE /api/link-tracker/links/<link_id>/"""
+    from django.http import HttpResponse
+    try:
+        if request.method == 'PUT':
+            resp = http_requests.put(
+                f"{LINK_TRACKER_BASE()}/api/links/{link_id}",
+                json=json.loads(request.body) if request.body else {},
+                headers={**LINK_TRACKER_HEADERS(), 'Content-Type': 'application/json'},
+                timeout=15,
+            )
+        else:
+            resp = http_requests.delete(
+                f"{LINK_TRACKER_BASE()}/api/links/{link_id}",
+                headers=LINK_TRACKER_HEADERS(),
+                timeout=15,
+            )
+        if resp.status_code == 204:
+            return HttpResponse(status=204)
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def lt_link_stats(request, shortcode):
+    """GET /api/link-tracker/links/<shortcode>/stats/"""
+    try:
+        resp = http_requests.get(
+            f"{LINK_TRACKER_BASE()}/api/links/{shortcode}/stats",
+            headers=LINK_TRACKER_HEADERS(),
+            timeout=15,
+        )
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def lt_analytics(request):
+    """GET /api/link-tracker/analytics/"""
+    try:
+        params = {k: v for k, v in request.GET.items()}
+        resp = http_requests.get(
+            f"{LINK_TRACKER_BASE()}/api/analytics",
+            headers=LINK_TRACKER_HEADERS(),
+            params=params,
+            timeout=15,
+        )
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@permission_classes([IsAdminUser])
+def lt_analytics_export(request):
+    """GET /api/link-tracker/analytics/export/ — CSV download"""
+    from django.http import HttpResponse
+    try:
+        params = {k: v for k, v in request.GET.items()}
+        resp = http_requests.get(
+            f"{LINK_TRACKER_BASE()}/api/analytics/export",
+            headers=LINK_TRACKER_HEADERS(),
+            params=params,
+            timeout=30,
+            stream=True,
+        )
+        disposition = resp.headers.get('Content-Disposition', 'attachment; filename="export.csv"')
+        django_resp = HttpResponse(resp.content, content_type='text/csv')
+        django_resp['Content-Disposition'] = disposition
+        return django_resp
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def lt_keys(request):
+    """GET/POST /api/link-tracker/keys/"""
+    try:
+        if request.method == 'GET':
+            resp = http_requests.get(
+                f"{LINK_TRACKER_BASE()}/api/keys",
+                headers=LINK_TRACKER_HEADERS(),
+                timeout=15,
+            )
+        else:
+            resp = http_requests.post(
+                f"{LINK_TRACKER_BASE()}/api/keys",
+                json=json.loads(request.body) if request.body else {},
+                headers={**LINK_TRACKER_HEADERS(), 'Content-Type': 'application/json'},
+                timeout=15,
+            )
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def lt_key_detail(request, key_id):
+    """DELETE /api/link-tracker/keys/<key_id>/"""
+    from django.http import HttpResponse
+    try:
+        resp = http_requests.delete(
+            f"{LINK_TRACKER_BASE()}/api/keys/{key_id}",
+            headers=LINK_TRACKER_HEADERS(),
+            timeout=15,
+        )
+        if resp.status_code == 204:
+            return HttpResponse(status=204)
+        return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+    except Exception as exc:
+        return _proxy_error(exc, context='LinkTracker')
 
